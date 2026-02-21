@@ -26,7 +26,7 @@ from urllib.parse import urlparse, parse_qs
 # Config
 # ---------------------------------------------------------------------------
 
-PI_HOST = "bucket@192.168.4.226"
+PI_HOST = "bucket@kombucha.local"
 PI_JOURNAL_DIR = "~/kombucha/data/journal/"
 PI_FRAMES_DIR = "~/kombucha/frames/"
 PI_STATE_FILE = "~/kombucha/state.json"
@@ -535,7 +535,30 @@ HTML_PAGE = r"""<!DOCTYPE html>
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
   }
+
+  .telemetry {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .telemetry .telem-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--card-bg);
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--card-border);
+  }
+  .telemetry .telem-label { color: var(--text-dim); }
+  .telemetry .telem-value { color: var(--text-bright); font-weight: 600; }
+  .telemetry .telem-value.warn { color: var(--lesson-text); }
+  .telemetry .telem-value.danger { color: #da3633; }
 
   header h1 {
     font-size: 18px;
@@ -592,19 +615,69 @@ HTML_PAGE = r"""<!DOCTYPE html>
   }
 
   .tick-frame {
-    flex: 0 0 280px;
-    min-height: 210px;
+    flex: 0 0 320px;
+    min-height: 240px;
     background: #0d1117;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
+    cursor: pointer;
   }
 
   .tick-frame img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    object-fit: contain;
+  }
+
+  .tick-frame .frame-expand {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    background: rgba(0,0,0,0.7);
+    color: #ccc;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    pointer-events: none;
+  }
+
+  /* Fullscreen image overlay */
+  .frame-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-direction: column;
+    padding: 20px;
+  }
+  .frame-overlay.active { display: flex; }
+  .frame-overlay img {
+    max-width: 95vw;
+    max-height: 85vh;
+    object-fit: contain;
+    border-radius: 4px;
+  }
+  .frame-overlay .overlay-info {
+    color: #aaa;
+    font-size: 13px;
+    margin-top: 12px;
+    text-align: center;
+    max-width: 800px;
+    line-height: 1.5;
+  }
+  .frame-overlay .overlay-close {
+    position: absolute;
+    top: 16px;
+    right: 24px;
+    color: #888;
+    font-size: 28px;
+    cursor: pointer;
   }
 
   .tick-frame .no-frame {
@@ -800,6 +873,76 @@ HTML_PAGE = r"""<!DOCTYPE html>
     opacity: 0.7;
   }
 
+  /* Qualia instrumentation markers */
+  .tick-qualia {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 0;
+  }
+  .qualia-continuity {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .qualia-continuity .bar {
+    width: 60px;
+    height: 6px;
+    background: #21262d;
+    border-radius: 3px;
+    overflow: hidden;
+    display: inline-block;
+  }
+  .qualia-continuity .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: #58a6ff;
+  }
+  .qualia-field {
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  .qualia-field strong { color: var(--text); font-weight: 500; }
+
+  .tick-card.has-opacity {
+    border-left: 3px solid #d2a8ff;
+  }
+  .opacity-marker {
+    background: #2d1f4e;
+    border-left: 2px solid #d2a8ff;
+    color: #d2a8ff;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 0 4px 4px 0;
+  }
+  .opacity-marker::before {
+    content: "Opacity: ";
+    font-weight: 600;
+  }
+
+  .tick-card.has-anomaly {
+    border-left: 3px solid #f47067;
+  }
+  .anomaly-marker {
+    background: #3d1a1a;
+    border-left: 2px solid #f47067;
+    color: #f47067;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 0 4px 4px 0;
+  }
+  .anomaly-marker::before {
+    content: "Body anomaly: ";
+    font-weight: 600;
+  }
+
+  .tick-card.has-opacity.has-anomaly {
+    border-left: 3px solid #f0883e;
+  }
+
   .goal-change {
     font-size: 11px;
     color: var(--goal-change);
@@ -898,6 +1041,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     <span id="statusText">Connecting...</span>
     <span id="tickCount"></span>
   </div>
+  <div class="telemetry" id="telemetry"></div>
 </header>
 
 <div id="feed"></div>
@@ -907,6 +1051,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
   New ticks above
 </button>
 
+<div class="frame-overlay" id="frameOverlay" onclick="closeOverlay(event)">
+  <span class="overlay-close">&times;</span>
+  <img id="overlayImg" src="" alt="">
+  <div class="overlay-info" id="overlayInfo"></div>
+</div>
+
 <script>
 (function() {
   const feed = document.getElementById('feed');
@@ -915,6 +1065,59 @@ HTML_PAGE = r"""<!DOCTYPE html>
   const statusText = document.getElementById('statusText');
   const tickCountEl = document.getElementById('tickCount');
   const scrollBtn = document.getElementById('scrollBtn');
+
+  // --- Full-frame overlay ---
+  function showFullFrame(src, tickJson) {
+    var overlay = document.getElementById('frameOverlay');
+    document.getElementById('overlayImg').src = src;
+    try {
+      var t = JSON.parse(tickJson);
+      var info = '<strong>Tick #' + t.tick + '</strong>';
+      if (t.timestamp) info += ' &mdash; ' + t.timestamp;
+      if (t.mood) info += ' &mdash; mood: <em>' + escHtml(t.mood) + '</em>';
+      if (t.goal) info += '<br><strong>Goal:</strong> ' + escHtml(t.goal);
+      if (t.observation || t.obs) info += '<br><strong>Observation:</strong> ' + escHtml(t.observation || t.obs);
+      if (t.reasoning) info += '<br><strong>Reasoning:</strong> ' + escHtml(t.reasoning);
+      if (t.thought) info += '<br><strong>Thought:</strong> ' + escHtml(t.thought);
+      var actions = t.actions;
+      if (typeof actions === 'string') try { actions = JSON.parse(actions); } catch(e) {}
+      if (Array.isArray(actions) && actions.length) {
+        info += '<br><strong>Actions:</strong> ' + escHtml(JSON.stringify(actions));
+      }
+      var tags = t.tags;
+      if (typeof tags === 'string') try { tags = JSON.parse(tags); } catch(e) {}
+      if (Array.isArray(tags) && tags.length) {
+        info += '<br><strong>Tags:</strong> ' + tags.map(function(tg){ return escHtml(tg); }).join(', ');
+      }
+      if (t.outcome) info += '<br><strong>Outcome:</strong> ' + escHtml(t.outcome);
+      if (t.lesson) info += '<br><strong>Lesson:</strong> ' + escHtml(t.lesson);
+      if (t.memory_note) info += '<br><strong>Memory note:</strong> ' + escHtml(t.memory_note);
+      if (t.model) info += '<br><strong>Model:</strong> ' + escHtml(t.model);
+      var q = t.qualia || {};
+      if (q.continuity !== undefined && q.continuity !== null) info += '<br><strong>Continuity:</strong> ' + q.continuity.toFixed(2) + (q.continuity_basis ? ' — ' + escHtml(q.continuity_basis) : '');
+      if (q.attention) info += '<br><strong>Attention:</strong> ' + escHtml(q.attention);
+      if (q.affect) info += '<br><strong>Affect:</strong> ' + escHtml(q.affect);
+      if (q.uncertainty) info += '<br><strong>Uncertainty:</strong> ' + escHtml(q.uncertainty);
+      if (q.drive) info += '<br><strong>Drive:</strong> ' + escHtml(q.drive);
+      if (q.surprise) info += '<br><strong>Surprise:</strong> ' + escHtml(q.surprise);
+      if (q.opacity !== undefined && q.opacity !== null) info += '<br><strong style="color:#d2a8ff">Opacity:</strong> ' + escHtml(q.opacity);
+      var sm = t.sme || {};
+      if (sm.frame_delta !== undefined && sm.frame_delta !== null) info += '<br><strong>Frame delta:</strong> ' + sm.frame_delta.toFixed(4) + (sm.anomaly ? ' <strong style="color:#f47067">[ANOMALY: ' + escHtml(sm.anomaly_reason) + ']</strong>' : '');
+      document.getElementById('overlayInfo').innerHTML = info;
+    } catch(e) {
+      document.getElementById('overlayInfo').innerHTML = '';
+    }
+    overlay.classList.add('active');
+  }
+
+  function closeOverlay(e) {
+    if (e.target.tagName === 'IMG') return; // don't close when clicking image
+    document.getElementById('frameOverlay').classList.remove('active');
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') document.getElementById('frameOverlay').classList.remove('active');
+  });
 
   let allTicks = [];
   let loadedTickIds = new Set();
@@ -1090,15 +1293,45 @@ HTML_PAGE = r"""<!DOCTYPE html>
       ? '<div class="tick-note">' + escHtml(t.memory_note) + '</div>'
       : '';
 
+    // Qualia instrumentation
+    var qualia = t.qualia || {};
+    var qualiaHtml = '';
+    var opacityHtml = '';
+    var anomalyHtml = '';
+    var hasOpacity = qualia.opacity !== undefined && qualia.opacity !== null;
+    var sme = t.sme || {};
+    var hasAnomaly = sme.anomaly === true;
+
+    if (qualia.continuity !== undefined && qualia.continuity !== null) {
+      var pct = Math.round(qualia.continuity * 100);
+      qualiaHtml += '<div class="qualia-continuity">' +
+        '<span>C:' + qualia.continuity.toFixed(2) + '</span>' +
+        '<span class="bar"><span class="bar-fill" style="width:' + pct + '%"></span></span>' +
+        '</div>';
+    }
+    if (qualia.affect) qualiaHtml += '<span class="qualia-field"><strong>Affect:</strong> ' + escHtml(qualia.affect) + '</span>';
+    if (qualia.surprise) qualiaHtml += '<span class="qualia-field"><strong>Surprise:</strong> ' + escHtml(qualia.surprise) + '</span>';
+    if (qualiaHtml) qualiaHtml = '<div class="tick-qualia">' + qualiaHtml + '</div>';
+
+    if (hasOpacity) {
+      opacityHtml = '<div class="opacity-marker">' + escHtml(qualia.opacity) + '</div>';
+    }
+    if (hasAnomaly) {
+      anomalyHtml = '<div class="anomaly-marker">' + escHtml(sme.anomaly_reason || 'unknown') + '</div>';
+    }
+
     // Frame panel
     var framePanelHtml = hasFrame
-      ? '<div class="tick-frame">' +
+      ? '<div class="tick-frame" onclick="showFullFrame(\'/frames/' + t.frame + '\', ' + JSON.stringify(JSON.stringify(t)) + ')">' +
           '<span class="tick-number">#' + t.tick + '</span>' +
           '<img src="/frames/' + t.frame + '" alt="Tick ' + t.tick + '" loading="lazy">' +
+          '<span class="frame-expand">click to expand</span>' +
         '</div>'
       : '';
 
     if (!hasFrame) card.classList.add('no-image');
+    if (hasOpacity) card.classList.add('has-opacity');
+    if (hasAnomaly) card.classList.add('has-anomaly');
 
     // Timestamp
     var timeStr = formatTime(t.timestamp);
@@ -1118,6 +1351,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
         '<div class="tick-obs">' + escHtml(t.observation || t.obs || '') + '</div>' +
         (t.reasoning ? '<div class="tick-reasoning">' + escHtml(t.reasoning) + '</div>' : '') +
         (t.thought ? '<div class="tick-thought">' + escHtml(t.thought) + '</div>' : '') +
+        qualiaHtml +
+        opacityHtml +
+        anomalyHtml +
         lessonHtml +
         noteHtml +
         goalChangeHtml +
@@ -1249,6 +1485,65 @@ HTML_PAGE = r"""<!DOCTYPE html>
         '<p>No ticks yet. Start the bridge on the Pi and wait for JSONL journal files to sync.</p>' +
       '</div>';
   }
+
+  // --- Telemetry polling ---
+  var telemEl = document.getElementById('telemetry');
+
+  function updateTelemetry() {
+    fetch('/api/state').then(function(r) { return r.json(); }).then(function(s) {
+      var items = [];
+
+      // Battery
+      var bv = s.battery_v;
+      if (bv) {
+        var bclass = 'telem-value';
+        if (bv < 10.5) bclass += ' danger';
+        else if (bv < 11.0) bclass += ' warn';
+        items.push('<div class="telem-item"><span class="telem-label">BAT</span><span class="' + bclass + '">' + bv.toFixed(2) + 'V</span></div>');
+      }
+
+      // CPU Temp
+      var ct = s.cpu_temp_c;
+      if (ct) {
+        var tclass = 'telem-value';
+        if (ct > 80) tclass += ' danger';
+        else if (ct > 70) tclass += ' warn';
+        items.push('<div class="telem-item"><span class="telem-label">CPU</span><span class="' + tclass + '">' + ct.toFixed(1) + '&deg;C</span></div>');
+      }
+
+      // Current tick duration
+      var dur = s.last_tick_duration_s;
+      if (dur) {
+        items.push('<div class="telem-item"><span class="telem-label">TICK</span><span class="telem-value">' + dur.toFixed(1) + 's</span></div>');
+      }
+
+      // Next tick rate
+      var ntm = s.next_tick_ms;
+      if (ntm) {
+        items.push('<div class="telem-item"><span class="telem-label">NEXT</span><span class="telem-value">' + (ntm / 1000).toFixed(1) + 's</span></div>');
+      }
+
+      // Mood
+      if (s.mood) {
+        items.push('<div class="telem-item"><span class="telem-label">MOOD</span><span class="telem-value">' + escHtml(s.mood) + '</span></div>');
+      }
+
+      // Errors
+      if (s.consecutive_errors > 0) {
+        items.push('<div class="telem-item"><span class="telem-label">ERR</span><span class="telem-value danger">' + s.consecutive_errors + '</span></div>');
+      }
+
+      // Tick count
+      if (s.tick_count) {
+        items.push('<div class="telem-item"><span class="telem-label">TICKS</span><span class="telem-value">' + s.tick_count + '</span></div>');
+      }
+
+      telemEl.innerHTML = items.join('');
+    }).catch(function() {});
+  }
+
+  updateTelemetry();
+  setInterval(updateTelemetry, 5000);
 
   // --- Init ---
   loadTicks(false).then(function() {

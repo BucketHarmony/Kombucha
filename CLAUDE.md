@@ -11,8 +11,9 @@ Design docs: README.md (overview), Kombucha.md (hardware/protocol), MEMORY_ENGIN
 ## The Rover (Kombucha)
 
 - **Host**: Raspberry Pi 5, 4GB RAM, Debian 13 Trixie, Python 3.13.5
-- **Hostname**: kombucha, IP 192.168.4.226, user `bucket`, SSH key auth
-- **Motor controller**: ESP32 via USB serial `/dev/ttyACM0` @ 115200 baud, JSON protocol
+- **Hostname**: kombucha, mDNS `kombucha.local` (DHCP IP changes on reboot), user `bucket`, SSH key auth
+- **Motor controller**: ESP32 via GPIO UART `/dev/ttyAMA0` @ 115200 baud, JSON protocol
+  - **WARNING**: `/dev/ttyACM0` is a USB-serial chip (WCH CH340) that does NOT control motors/OLED/gimbal. Only `/dev/ttyAMA0` reaches the ESP32.
 - **Camera**: Realtek 5842 USB UVC, 160 FOV, 640x480 working res, MJPEG
 - **Audio**: USB mic (capture) + USB PnP device (capture + playback)
 - **Display**: 4-line OLED on chassis via ESP32
@@ -102,20 +103,21 @@ The Waveshare app.py process holds the serial port exclusively. Must kill it bef
 ## Accessing the Rover
 
 ```bash
-ssh bucket@192.168.4.226                    # shell
-ssh bucket@192.168.4.226 "tail -f ~/ugv.log" # live logs
-# Web UI: http://192.168.4.226:5000
-# Jupyter: http://192.168.4.226:8888
+ssh bucket@kombucha.local                              # shell
+ssh bucket@kombucha.local 'tail -f ~/kombucha.log'     # live bridge logs
+# Web UI: http://kombucha.local:5000
+# Jupyter: http://kombucha.local:8888
+# Story dashboard: http://localhost:8080 (run story_server.py locally)
 ```
 
 Kill the Waveshare app before running the bridge:
 ```bash
-ssh bucket@192.168.4.226 "pkill -f app.py"
+ssh bucket@kombucha.local "pkill -f app.py"
 ```
 
 Restart the control app:
 ```bash
-ssh bucket@192.168.4.226 "pkill -f app.py; sleep 2; cd ~/ugv_rpi && XDG_RUNTIME_DIR=/run/user/1000 nohup ugv-env/bin/python app.py >> ~/ugv.log 2>&1 &"
+ssh bucket@kombucha.local "pkill -f app.py; sleep 2; cd ~/ugv_rpi && XDG_RUNTIME_DIR=/run/user/1000 nohup ugv-env/bin/python app.py >> ~/ugv.log 2>&1 &"
 ```
 
 ## Running Tests
@@ -126,12 +128,24 @@ python -m pytest test_kombucha.py -v
 
 Tests run without hardware — no serial, camera, or API calls needed.
 
+## Confirmed Working
+
+- **Drive motors**: Differential drive via `{"T":1,"L":speed,"R":speed}` on `/dev/ttyAMA0`. Speeds -1.3 to 1.3 m/s. Auto-stop with `duration_ms`.
+- **OLED display**: 4-line display via `{"T":3,"lineNum":0-3,"Text":"..."}`. Max 20 chars per line.
+- **Gimbal pan/tilt**: `{"T":133,"X":pan,"Y":tilt,"SPD":speed,"ACC":accel}`. Pan -180..180, tilt -30..90.
+- **LED lights**: Base and head LEDs via `{"T":132,"IO4":0-255,"IO5":0-255}`.
+- **Speech**: gTTS + ffplay on USB PnP Audio Device (card 3). Installed via `pip3 install --break-system-packages gTTS`.
+- **Camera**: 640x480 MJPEG capture via OpenCV. GStreamer/FFMPEG backend (V4L2 not compiled in pip cv2).
+- **ESP32 feedback**: Continuous T:1001 JSON stream on `/dev/ttyAMA0` with speed, IMU, odometry (`odl`/`odr`), and battery voltage (`v` in centivolts, e.g., 1177 = 11.77V).
+- **Memory engine**: SQLite WAL mode, JSONL journal backup, 5-tier context assembly.
+- **Story server**: Local web dashboard on port 8080 with SSE live updates, rsync sync from rover.
+
 ## Known Issues
 
+- **Serial port confusion**: `/dev/ttyACM0` is a WCH CH340 USB-serial chip — NOT the ESP32. The ESP32 motor controller is on `/dev/ttyAMA0` (GPIO UART). The Waveshare `app.py` incorrectly uses `/dev/ttyACM0` for Pi5 in its auto-detect, but `base_ctrl.py` correctly uses `/dev/ttyAMA0`. The bridge uses `/dev/ttyAMA0`.
+- **ESP32 init required**: On serial open, the bridge sends 5 init commands matching the Waveshare `cmd_on_boot()` sequence: feedback interval (T:142), feedback flow (T:131), echo off (T:143), module select (T:4), version set (T:900). Without these, the ESP32 may not respond correctly.
 - **USB camera**: Can drop off the USB bus after force-killing app.py. May need physical reseat. Check with `v4l2-ctl --list-devices`.
-- **Pan-tilt servos**: `module_type` was changed to 2 (Gimbal) in config.yaml but physical movement unconfirmed — may be a wiring/power issue
-- **ESP32 feedback**: IMU (T:126) and battery voltage (T:130) queries return no data — needs investigation
-- **mediapipe**: Not available for Python 3.13/aarch64, imports are guarded with `HAS_MEDIAPIPE` flag in the Waveshare code
-- **pyttsx3**: espeak driver fails on this system — use gTTS instead
-- **app.py cron**: `@reboot` cron respawns app.py on boot. Must kill before each bridge run. Consider disabling the cron for dedicated bridge operation.
+- **mediapipe**: Not available for Python 3.13/aarch64, imports are guarded with `HAS_MEDIAPIPE` flag in the Waveshare code.
+- **pyttsx3**: espeak driver fails on this system — use gTTS instead (already installed).
+- **app.py cron**: The `@reboot` cron entry for app.py has been **removed**. If app.py needs to run, start it manually. See DEPLOY.md for instructions.
 - **OpenCV backend**: pip-installed cv2 on the Pi doesn't have V4L2 backend compiled in. Uses GStreamer/FFMPEG fallback. The V4L2 attempt in init_camera is harmless.
