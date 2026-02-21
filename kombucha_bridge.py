@@ -815,7 +815,8 @@ async def generate_session_summary(client, api_key, db, session_id):
 # --- Journal Writer -----------------------------------------------------------
 
 def write_journal_entry(tick_id, session_id, decision, result, state,
-                        model_used=None, sme=None):
+                        model_used=None, sme=None, prompt=None,
+                        raw_response=None):
     """Append a JSONL entry to the daily journal file."""
     JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -842,6 +843,8 @@ def write_journal_entry(tick_id, session_id, decision, result, state,
         "qualia": decision.get("qualia"),
         "model": model_used,
         "sme": sme,
+        "prompt": prompt,
+        "raw_response": raw_response,
     }
 
     try:
@@ -1770,6 +1773,8 @@ async def call_brain(client, api_key, frame_b64, state, memory_context,
 
     model = MODEL_DEEP if use_deep else MODEL
 
+    prompt_text = "\n".join(text_parts)
+
     resp = await client.post(
         ANTHROPIC_API,
         headers={
@@ -1786,7 +1791,9 @@ async def call_brain(client, api_key, frame_b64, state, memory_context,
         timeout=45.0,
     )
     resp.raise_for_status()
-    return resp.json(), model
+    api_json = resp.json()
+    raw_response = api_json.get("content", [{}])[0].get("text", "")
+    return api_json, model, prompt_text, raw_response
 
 
 def parse_brain_response(api_resp):
@@ -1907,7 +1914,7 @@ async def main():
 
                 try:
                     log.info(f"Tick {state['tick_count']} | goal: {state['goal']}")
-                    api_resp, model_used = await call_brain(
+                    api_resp, model_used, prompt_text, raw_response = await call_brain(
                         client, api_key, frame_b64, state,
                         memory_context, use_deep=use_deep, sme=sme
                     )
@@ -1921,7 +1928,9 @@ async def main():
                     if ser or DEBUG_MODE:
                         send_tcode(ser, {"T": 0})
                         send_tcode(ser, {"T": 3, "lineNum": 0, "Text": "thinking..."})
-                    await asyncio.sleep(LOOP_INTERVAL)
+                    backoff = min(LOOP_INTERVAL * (2 ** state["consecutive_errors"]), 120)
+                    log.warning(f"  Backing off {backoff:.0f}s (error #{state['consecutive_errors']})")
+                    await asyncio.sleep(backoff)
                     continue
                 except Exception as e:
                     log.error(f"Brain call failed: {e}")
@@ -1929,7 +1938,9 @@ async def main():
                     if ser or DEBUG_MODE:
                         send_tcode(ser, {"T": 0})
                         send_tcode(ser, {"T": 3, "lineNum": 0, "Text": "thinking..."})
-                    await asyncio.sleep(LOOP_INTERVAL)
+                    backoff = min(LOOP_INTERVAL * (2 ** state["consecutive_errors"]), 120)
+                    log.warning(f"  Backing off {backoff:.0f}s (error #{state['consecutive_errors']})")
+                    await asyncio.sleep(backoff)
                     continue
 
                 # 4. LOG inner life
@@ -1972,7 +1983,9 @@ async def main():
                 insert_tick_memory(db, tick_id, session_id, decision,
                                    model_used=model_used, sme=sme)
                 write_journal_entry(tick_id, session_id, decision, result, state,
-                                    model_used=model_used, sme=sme)
+                                    model_used=model_used, sme=sme,
+                                    prompt=prompt_text,
+                                    raw_response=raw_response)
 
                 # Stash frame for next tick's self-model error
                 prev_frame_b64 = frame_b64

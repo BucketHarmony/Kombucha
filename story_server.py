@@ -1027,6 +1027,84 @@ HTML_PAGE = r"""<!DOCTYPE html>
     opacity: 0.7;
   }
 
+  /* Prompt/Response inspect buttons */
+  .tick-inspect-icons {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: flex;
+    gap: 4px;
+    z-index: 2;
+  }
+  .tick-body { position: relative; }
+  .inspect-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    background: var(--chip-bg);
+    color: var(--text-dim);
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  .inspect-btn:hover {
+    opacity: 1;
+    color: var(--accent);
+  }
+
+  /* Text overlay modal (prompt/response viewer) */
+  .text-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 10000;
+    flex-direction: column;
+    padding: 20px;
+    cursor: pointer;
+  }
+  .text-overlay.active { display: flex; }
+  .text-overlay-title {
+    color: var(--accent);
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+  }
+  .text-overlay-content {
+    flex: 1;
+    overflow: auto;
+    background: #0d1117;
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 16px;
+    cursor: text;
+  }
+  .text-overlay-content pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--text);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .text-overlay .overlay-close {
+    position: absolute;
+    top: 16px;
+    right: 24px;
+    color: #888;
+    font-size: 28px;
+    cursor: pointer;
+  }
+
   @media (max-width: 700px) {
     .tick-card { flex-direction: column; }
     .tick-frame { flex: 0 0 auto; max-height: 250px; }
@@ -1055,6 +1133,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <span class="overlay-close">&times;</span>
   <img id="overlayImg" src="" alt="">
   <div class="overlay-info" id="overlayInfo"></div>
+</div>
+
+<div class="text-overlay" id="textOverlay" onclick="closeTextOverlay(event)">
+  <span class="overlay-close">&times;</span>
+  <h3 class="text-overlay-title" id="textOverlayTitle"></h3>
+  <div class="text-overlay-content"><pre id="textOverlayPre"></pre></div>
 </div>
 
 <script>
@@ -1116,8 +1200,22 @@ HTML_PAGE = r"""<!DOCTYPE html>
   }
 
   document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') document.getElementById('frameOverlay').classList.remove('active');
+    if (e.key === 'Escape') {
+      document.getElementById('frameOverlay').classList.remove('active');
+      document.getElementById('textOverlay').classList.remove('active');
+    }
   });
+
+  function showTextOverlay(title, text) {
+    document.getElementById('textOverlayTitle').textContent = title;
+    document.getElementById('textOverlayPre').textContent = text;
+    document.getElementById('textOverlay').classList.add('active');
+  }
+
+  function closeTextOverlay(e) {
+    if (e.target.closest('.text-overlay-content')) return;
+    document.getElementById('textOverlay').classList.remove('active');
+  }
 
   let allTicks = [];
   let loadedTickIds = new Set();
@@ -1293,6 +1391,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
       ? '<div class="tick-note">' + escHtml(t.memory_note) + '</div>'
       : '';
 
+    // Prompt/Response inspect icons
+    var inspectHtml = '';
+    if (t.prompt || t.raw_response) {
+      inspectHtml = '<div class="tick-inspect-icons">';
+      if (t.prompt) inspectHtml += '<span class="inspect-btn" onclick="event.stopPropagation();showTextOverlay(\'Prompt \\u2014 Tick #' + t.tick + '\', ' + JSON.stringify(JSON.stringify(t.prompt)) + ')" title="View prompt">P</span>';
+      if (t.raw_response) inspectHtml += '<span class="inspect-btn" onclick="event.stopPropagation();showTextOverlay(\'Response \\u2014 Tick #' + t.tick + '\', ' + JSON.stringify(JSON.stringify(t.raw_response)) + ')" title="View response">R</span>';
+      inspectHtml += '</div>';
+    }
+
     // Qualia instrumentation
     var qualia = t.qualia || {};
     var qualiaHtml = '';
@@ -1339,6 +1446,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     card.innerHTML =
       framePanelHtml +
       '<div class="tick-body">' +
+        inspectHtml +
         (!hasFrame ? '<span class="tick-number-inline">#' + t.tick + '</span>' : '') +
         '<div class="tick-header">' +
           '<div class="tick-header-left">' +

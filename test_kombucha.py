@@ -2300,7 +2300,7 @@ class TestCallBrain:
         state = {"tick_count": 5, "goal": "test", "last_result": "ok",
                  "pan_position": 0, "tilt_position": 0, "wake_reason": None}
 
-        result, model = asyncio.get_event_loop().run_until_complete(
+        result, model, _, _ = asyncio.get_event_loop().run_until_complete(
             kb.call_brain(mock_client, "test-key", "base64data", state, "memory ctx")
         )
         assert model == kb.MODEL
@@ -2321,7 +2321,7 @@ class TestCallBrain:
         state = {"tick_count": 1, "goal": "test", "last_result": "ok",
                  "pan_position": 0, "tilt_position": 0, "wake_reason": None}
 
-        _, model = asyncio.get_event_loop().run_until_complete(
+        _, model, _, _ = asyncio.get_event_loop().run_until_complete(
             kb.call_brain(mock_client, "key", "b64", state, "ctx", use_deep=True)
         )
         assert model == kb.MODEL_DEEP
@@ -5045,3 +5045,168 @@ class TestReadTelemetryBranches:
             assert "battery_v" not in result
         finally:
             kb.DEBUG_MODE = old_debug
+
+
+# ===========================================================================
+# Exponential Backoff Tests
+# ===========================================================================
+
+class TestExponentialBackoff:
+    """Tests for exponential backoff on API errors."""
+
+    def test_backoff_first_error(self):
+        """First error backs off LOOP_INTERVAL * 2^1 = 6s."""
+        errors = 1
+        backoff = min(kb.LOOP_INTERVAL * (2 ** errors), 120)
+        assert backoff == 6.0
+
+    def test_backoff_second_error(self):
+        """Second error backs off LOOP_INTERVAL * 2^2 = 12s."""
+        errors = 2
+        backoff = min(kb.LOOP_INTERVAL * (2 ** errors), 120)
+        assert backoff == 12.0
+
+    def test_backoff_third_error(self):
+        """Third error backs off LOOP_INTERVAL * 2^3 = 24s."""
+        errors = 3
+        backoff = min(kb.LOOP_INTERVAL * (2 ** errors), 120)
+        assert backoff == 24.0
+
+    def test_backoff_caps_at_120(self):
+        """Backoff caps at 120 seconds regardless of error count."""
+        errors = 10
+        backoff = min(kb.LOOP_INTERVAL * (2 ** errors), 120)
+        assert backoff == 120
+
+    def test_backoff_progression(self):
+        """Backoff doubles each time: 6, 12, 24, 48, 96, 120, 120."""
+        expected = [6, 12, 24, 48, 96, 120, 120]
+        for i, exp in enumerate(expected, start=1):
+            backoff = min(kb.LOOP_INTERVAL * (2 ** i), 120)
+            assert backoff == exp, f"Error #{i}: expected {exp}, got {backoff}"
+
+
+# ===========================================================================
+# call_brain 4-tuple Return Tests
+# ===========================================================================
+
+class TestCallBrainPromptResponse:
+    """Tests for call_brain returning prompt text and raw response."""
+
+    def test_returns_4_tuple(self):
+        """call_brain returns (api_json, model, prompt_text, raw_response)."""
+        raw_text = '{"observation":"test","goal":"test","mood":"ok","actions":[],"next_tick_ms":3000}'
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": raw_text}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        state = {"tick_count": 5, "goal": "test", "last_result": "ok",
+                 "pan_position": 0, "tilt_position": 0, "wake_reason": None}
+
+        result = asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "test-key", "base64data", state, "memory ctx")
+        )
+        assert len(result) == 4
+        api_json, model, prompt_text, raw_response = result
+        assert model == kb.MODEL
+        assert raw_response == raw_text
+        assert "=== CURRENT TICK ===" in prompt_text
+        assert "memory ctx" in prompt_text
+
+    def test_prompt_text_excludes_empty_context(self):
+        """Prompt text omits whitespace-only memory context."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": '{"observation":"x"}'}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        state = {"tick_count": 1, "goal": "test", "last_result": "ok",
+                 "pan_position": 0, "tilt_position": 0, "wake_reason": None}
+
+        _, _, prompt_text, _ = asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "key", "b64", state, "   ")
+        )
+        # prompt_text should start with === CURRENT TICK === (no whitespace context)
+        assert prompt_text.startswith("=== CURRENT TICK ===")
+
+    def test_raw_response_is_raw_text(self):
+        """raw_response is the exact text from content[0].text."""
+        raw = '```json\n{"observation":"test"}\n```'
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"content": [{"text": raw}]}
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        state = {"tick_count": 1, "goal": "test",
+                 "pan_position": 0, "tilt_position": 0}
+
+        _, _, _, raw_response = asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "key", "b64", state, "ctx")
+        )
+        assert raw_response == raw
+
+
+# ===========================================================================
+# Journal Prompt/Response Fields Tests
+# ===========================================================================
+
+class TestJournalPromptResponse:
+    """Tests for prompt and raw_response fields in journal entries."""
+
+    def test_journal_includes_prompt(self, tmp_dir, sample_decision):
+        """Journal entry includes prompt field when provided."""
+        state = {"pan_position": 0, "tilt_position": 0}
+        kb.write_journal_entry("1", "sess", sample_decision, "ok", state,
+                               prompt="memory ctx\n=== CURRENT TICK ===\n{}")
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        journal_file = kb.JOURNAL_DIR / f"{today}.jsonl"
+        entry = json.loads(journal_file.read_text().strip())
+        assert entry["prompt"] == "memory ctx\n=== CURRENT TICK ===\n{}"
+
+    def test_journal_includes_raw_response(self, tmp_dir, sample_decision):
+        """Journal entry includes raw_response field when provided."""
+        state = {"pan_position": 0, "tilt_position": 0}
+        kb.write_journal_entry("1", "sess", sample_decision, "ok", state,
+                               raw_response='{"observation":"test"}')
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        journal_file = kb.JOURNAL_DIR / f"{today}.jsonl"
+        entry = json.loads(journal_file.read_text().strip())
+        assert entry["raw_response"] == '{"observation":"test"}'
+
+    def test_journal_prompt_response_none_by_default(self, tmp_dir, sample_decision):
+        """Without prompt/raw_response args, fields are None."""
+        state = {"pan_position": 0, "tilt_position": 0}
+        kb.write_journal_entry("1", "sess", sample_decision, "ok", state)
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        journal_file = kb.JOURNAL_DIR / f"{today}.jsonl"
+        entry = json.loads(journal_file.read_text().strip())
+        assert entry["prompt"] is None
+        assert entry["raw_response"] is None
+
+    def test_journal_backward_compat(self, tmp_dir, sample_decision):
+        """Existing callers without prompt/raw_response still work."""
+        state = {"pan_position": 0, "tilt_position": 0}
+        # Call with only the old parameters
+        kb.write_journal_entry("1", "sess", sample_decision, "ok", state,
+                               model_used="test-model", sme={"frame_delta": 0.01})
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        journal_file = kb.JOURNAL_DIR / f"{today}.jsonl"
+        entry = json.loads(journal_file.read_text().strip())
+        assert entry["model"] == "test-model"
+        assert entry["prompt"] is None
+        assert entry["raw_response"] is None
