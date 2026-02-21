@@ -102,12 +102,15 @@ The Waveshare app.py process holds the serial port exclusively. Must kill it bef
 
 ## Accessing the Rover
 
+The rover's DHCP IP changes frequently. **Always use mDNS** (`kombucha.local`), never a hardcoded IP.
+If mDNS fails, do a subnet ping sweep to find it (check all 192.168.x.0/24 subnets on your machine).
+
 ```bash
 ssh bucket@kombucha.local                              # shell
-ssh bucket@kombucha.local 'tail -f ~/kombucha.log'     # live bridge logs
+ssh bucket@kombucha.local 'tail -f ~/ugv.log'          # live bridge logs
 # Web UI: http://kombucha.local:5000
 # Jupyter: http://kombucha.local:8888
-# Story dashboard: http://localhost:8080 (run story_server.py locally)
+# Story dashboard: http://kombucha.local:8080 (or run story_server.py locally)
 ```
 
 Kill the Waveshare app before running the bridge:
