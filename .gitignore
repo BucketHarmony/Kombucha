@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Data (generated on rover)
+data/
+frames/
+*.db
+*.db-wal
+*.db-shm
+
+# State
+state.json
+
+# Environment
+.env
+*.key
+
+# OS
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
