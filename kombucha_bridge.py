@@ -96,7 +96,7 @@ def _load_prompt(name):
 # Speech-to-text config
 STT_BACKEND       = os.environ.get("KOMBUCHA_STT_BACKEND", "vosk")  # "vosk" or "whisper"
 STT_ENABLED      = True
-STT_DEVICE_INDEX  = 1      # USB PnP Audio Device (hw:3,0)
+STT_DEVICE_INDEX  = 0      # USB Camera mic (hw:2,0)
 STT_SAMPLE_RATE   = 48000  # Must match device native rate
 STT_MODEL_PATH    = Path.home() / "kombucha" / "models" / "vosk-model-small-en-us-0.15"
 WHISPER_MODEL_SIZE = "tiny"  # tiny=~75MB, base=~150MB, small=~500MB
@@ -733,7 +733,7 @@ async def compress_old_memories(client, api_key, db, session_id):
             },
             json={
                 "model": MODEL_HAIKU,
-                "max_tokens": 800,
+                "max_tokens": 1200,
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=30.0,
@@ -1507,23 +1507,27 @@ def translate_action(action, state):
 
 
 def _speak_async(text):
-    """Fire-and-forget TTS via gTTS + aplay."""
+    """Fire-and-forget TTS via gTTS + aplay to USB PnP speaker."""
     if DEBUG_MODE:
         log.info(f'  [DEBUG] WOULD SPEAK: "{text}"')
         return
+    # Sanitize text for shell safety
+    safe_text = text.replace("'", "'\\''")
     try:
         subprocess.Popen(
             [
                 "bash", "-c",
-                f'python3 -c "from gtts import gTTS; '
-                f"tts = gTTS(text='''{text}''', lang='en'); "
-                f"tts.save('/tmp/kombucha_tts.mp3')\" && "
-                f"mpg123 -q /tmp/kombucha_tts.mp3 2>/dev/null || "
-                f"ffplay -nodisp -autoexit /tmp/kombucha_tts.mp3 2>/dev/null"
+                f"python3 -c 'from gtts import gTTS; "
+                f"tts = gTTS(text=\"\"\"{safe_text}\"\"\", lang=\"en\"); "
+                f"tts.save(\"/tmp/kombucha_tts.mp3\")' && "
+                f"ffmpeg -y -i /tmp/kombucha_tts.mp3 -f wav -acodec pcm_s16le "
+                f"/tmp/kombucha_tts.wav 2>/dev/null && "
+                f"aplay -D plughw:3,0 /tmp/kombucha_tts.wav 2>/dev/null"
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        log.info(f'  Speaking: "{text[:60]}"')
     except Exception as e:
         log.warning(f"TTS failed: {e}")
 
@@ -1698,7 +1702,16 @@ class WhisperSpeechListener(threading.Thread):
 
                 if len(window_frames) >= chunks_per_window:
                     # Transcribe the window — Silero VAD inside whisper handles silence
-                    audio_f32 = np.concatenate(window_frames).astype(np.float32) / 32768.0
+                    audio_i16_all = np.concatenate(window_frames)
+                    # Downsample 48kHz → 16kHz (3:1) — Whisper/Silero VAD expects 16kHz
+                    if self._sample_rate == 48000:
+                        audio_i16_all = audio_i16_all[::3]
+                    elif self._sample_rate != 16000:
+                        # Generic resample for other rates
+                        ratio = self._sample_rate / 16000
+                        indices = np.arange(0, len(audio_i16_all), ratio).astype(int)
+                        audio_i16_all = audio_i16_all[indices]
+                    audio_f32 = audio_i16_all.astype(np.float32) / 32768.0
                     window_frames = []
                     self._transcribe(audio_f32)
 
@@ -1715,12 +1728,16 @@ class WhisperSpeechListener(threading.Thread):
     def _transcribe(self, audio_f32):
         """Transcribe float32 mono audio via faster-whisper with Silero VAD."""
         try:
+            rms = float(np.sqrt(np.mean(audio_f32 ** 2)))
+            peak = float(np.max(np.abs(audio_f32)))
+            log.debug(f"Audio stats: RMS={rms:.6f} Peak={peak:.4f} len={len(audio_f32)}")
             segments, _ = self._model.transcribe(
                 audio_f32,
                 beam_size=1,
                 language="en",
                 vad_filter=True,
                 vad_parameters=dict(
+                    threshold=0.3,
                     min_silence_duration_ms=500,
                     speech_pad_ms=200,
                 ),
