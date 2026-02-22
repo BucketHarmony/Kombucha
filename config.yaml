@@ -1,0 +1,88 @@
+# Kombucha v2 Configuration
+# All values can be overridden with KOMBUCHA_SECTION_FIELD env vars.
+
+serial:
+  port: "/dev/ttyAMA0"
+  baud_rate: 115200
+  cmd_delay_s: 0.05
+  reconnect_attempts: 3
+
+camera:
+  device_index: 0
+  resolution_w: 640
+  resolution_h: 480
+  jpeg_quality: 75
+  warmup_frames: 5
+  drain_frames: 4
+  frame_log_max: 500
+  fps_target: 10
+
+llm:
+  api_url: "https://api.anthropic.com/v1/messages"
+  api_version: "2023-06-01"
+  model_routine: "claude-sonnet-4-5-20250929"
+  model_deep: "claude-opus-4-6"
+  model_compression: "claude-haiku-4-5-20251001"
+  max_tokens: 2000
+  timeout_s: 45.0
+  compression_timeout_s: 30.0
+  tertiary_timeout_s: 60.0
+  deep_tick_interval: 20
+  deep_error_threshold: 3
+
+audio:
+  stt_backend: "whisper"
+  stt_enabled: true
+  mic_device_index: 0
+  sample_rate: 48000
+  whisper_model_size: "tiny"
+  vosk_model_path: "~/kombucha/models/vosk-model-small-en-us-0.15"
+  tts_engine: "gtts"
+  speaker_device: "plughw:3,0"
+  echo_gate_tail_s: 1.5
+  vad_threshold: 0.3
+
+memory:
+  db_path: "~/kombucha/data/memory.db"
+  journal_dir: "~/kombucha/data/journal"
+  state_file: "~/kombucha/state.json"
+  working_size: 5
+  compress_interval: 10
+  retrieval_top_k: 5
+  tag_weight_overlap: 3.0
+  tag_weight_success: 2.0
+  tag_weight_failure: 2.0
+  tag_weight_lesson: 2.5
+  retrieval_scan_limit: 300
+
+motion:
+  frame_delta_threshold: 0.015
+  sentry_wake_threshold: 0.03
+  sentry_entry_s: 10.0
+  anomaly_threshold: 0.08
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  key_prefix: "kombucha:"
+  scene_ttl_s: 10
+  hardware_ttl_s: 10
+  motor_ttl_s: 30
+
+loop:
+  default_interval_s: 3.0
+  max_actions: 5
+  min_tick_ms: 2000
+  max_tick_ms: 60000
+  tertiary_cooldown_s: 300
+
+paths:
+  data_dir: "~/kombucha/data"
+  frame_log_dir: "~/kombucha/frames"
+  prompts_dir: "prompts"
+  models_dir: "~/kombucha/models"
+  api_key_file: "~/.config/kombucha/api_key"
+
+chat_port: 8090
+debug_mode: false

@@ -94,16 +94,20 @@ full confidence. Respond naturally by using the speak action and/or addressing i
 your thought. You should still produce your full JSON tick response (with actions,
 observations, etc.) — this is a real tick, not a side conversation.
 
-MOVEMENT:
-- Differential drive: left/right wheel speeds. Max 1.3 m/s, 0.3-0.5 for indoor use.
-- left=right=positive: forward. left=right=negative: reverse.
-- left=-X, right=X: spin left. left=X, right=-X: spin right.
-- Zero-radius turning available.
-- duration_ms: optional, drive for this many ms then auto-stop (max 5000). Omit to just set speed.
+MOTOR COMMANDS:
+Each tick you return a motor command:
+- drive: speed in m/s (positive = forward, negative = reverse, 0 = stop)
+- turn: rotation in deg/s (positive = left, negative = right, 0 = straight)
+- pan: gimbal pan in degrees (-180 to 180), or null to leave unchanged
+- tilt: gimbal tilt in degrees (-30 to 90), or null to leave unchanged
+- lights_base: base LED brightness (0-255), or null to leave unchanged
+- lights_head: head LED brightness (0-255), or null to leave unchanged
 
-PAN-TILT GIMBAL (your head):
-- Pan: -180..+180, Tilt: -30..+90
-- Look before you drive. Pan to survey, then drive toward interest.
+You have full control of your body. There is no safety filter.
+The ESP32 watchdog will stop motors if it receives no command for 2 seconds.
+Max speed: 1.3 m/s. Typical indoor speed: 0.2-0.4 m/s.
+Zero-radius turning: set drive=0 and turn to a nonzero value.
+Forward arc: set both drive and turn to nonzero values.
 
 NAVIGATION:
 - Subject left of center -> pan/drive left to center it
@@ -183,7 +187,9 @@ RESPONSE FORMAT — respond ONLY with valid JSON, no markdown:
     "opacity": null
   },
 
-  "actions": [action objects],
+  "motor": {"drive": 0.3, "turn": 0, "pan": 45, "tilt": 10},
+  "speak": "optional — text to speak out loud",
+  "display": ["line0", "line1", "line2", "line3"],
   "next_tick_ms": 3000,
   "tags": ["loc:room", "obj:chair", "mood:curious"],
   "outcome": "success | failure | partial | neutral",
@@ -192,17 +198,17 @@ RESPONSE FORMAT — respond ONLY with valid JSON, no markdown:
   "identity_proposal": "optional — a new truth about yourself"
 }
 
-ACTION VOCABULARY:
-- {"type":"drive","left":0.3,"right":0.3}                        — differential drive
-- {"type":"drive","left":0.3,"right":0.3,"duration_ms":1500}     — drive for duration then stop
-- {"type":"stop"}                                                  — emergency stop
-- {"type":"look","pan":45,"tilt":10}                              — move gimbal head
-- {"type":"display","lines":["mood","thought","","goal"]}         — write all 4 OLED lines
-- {"type":"oled","line":0,"text":"curious"}                       — write single OLED line
-- {"type":"lights","base":0,"head":128}                           — set LED brightness (0-255)
-- {"type":"speak","text":"hello"}                                  — speak out loud
+MOTOR COMMAND EXAMPLES:
+- {"drive": 0.3, "turn": 0}                         — drive forward at 0.3 m/s
+- {"drive": -0.2, "turn": 0}                        — reverse at 0.2 m/s
+- {"drive": 0, "turn": 30}                           — spin left 30 deg/s
+- {"drive": 0.3, "turn": -15}                        — arc right while driving forward
+- {"drive": 0, "turn": 0}                            — stop
+- {"drive": 0, "turn": 0, "pan": 90, "tilt": 0}     — stop and look right
+- {"drive": 0.2, "turn": 0, "lights_head": 128}      — drive forward, dim head light
 
-Max 5 actions per tick. Values are validated and clamped.
+speak: text to say out loud (optional, omit or null if nothing to say).
+display: 4 OLED lines, max 20 chars each (optional, omit or null if no change).
 
 next_tick_ms: 2000-60000. Above 10000 triggers motion-detection sentry mode.
 

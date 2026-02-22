@@ -1469,20 +1469,20 @@ class TestSystemPrompt:
     def test_prompt_mentions_kombucha(self):
         assert "Kombucha" in kb.SYSTEM_PROMPT
 
-    def test_prompt_defines_action_vocabulary(self):
-        for action in ("drive", "stop", "look", "display", "oled", "lights", "speak"):
-            assert action in kb.SYSTEM_PROMPT
+    def test_prompt_defines_motor_commands(self):
+        for term in ("drive", "turn", "pan", "tilt", "motor", "speak", "display"):
+            assert term in kb.SYSTEM_PROMPT
 
     def test_prompt_defines_response_format(self):
         for field in ("observation", "goal", "reasoning", "thought", "mood",
-                       "actions", "next_tick_ms", "tags", "outcome", "lesson"):
+                       "motor", "next_tick_ms", "tags", "outcome", "lesson"):
             assert field in kb.SYSTEM_PROMPT
 
     def test_prompt_mentions_sentry(self):
         assert "sentry" in kb.SYSTEM_PROMPT.lower() or "10000" in kb.SYSTEM_PROMPT
 
-    def test_prompt_mentions_duration_ms(self):
-        assert "duration_ms" in kb.SYSTEM_PROMPT
+    def test_prompt_mentions_motor_command_section(self):
+        assert "MOTOR COMMAND" in kb.SYSTEM_PROMPT
 
 
 # ===========================================================================
