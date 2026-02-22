@@ -24,10 +24,14 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
 import cv2
 import numpy as np
@@ -78,6 +82,21 @@ MOTION_THRESHOLD  = 0.03
 WORKING_MEMORY_SIZE    = 5    # last N ticks kept in full
 COMPRESSION_INTERVAL   = 10   # compress every N ticks via Haiku
 RETRIEVED_MEMORY_COUNT = 5    # top K retrieved memories per tick
+
+CHAT_PORT = 8090
+
+# Speech-to-text config
+STT_ENABLED      = True
+STT_DEVICE_INDEX  = 1      # USB PnP Audio Device (hw:3,0)
+STT_SAMPLE_RATE   = 48000  # Must match device native rate
+STT_MODEL_PATH    = Path.home() / "kombucha" / "models" / "vosk-model-small-en-us-0.15"
+
+try:
+    from vosk import Model as VoskModel, KaldiRecognizer
+    import pyaudio
+    HAS_STT = True
+except ImportError:
+    HAS_STT = False
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
@@ -944,6 +963,7 @@ def compute_basic_self_model_error(prev_actions, prev_frame_b64, curr_frame_b64)
     error = {
         "frame_delta": None,
         "drive_expected_motion": False,
+        "look_expected_change": False,
         "motion_detected": False,
         "anomaly": False,
         "anomaly_reason": None,
@@ -957,13 +977,20 @@ def compute_basic_self_model_error(prev_actions, prev_frame_b64, curr_frame_b64)
             and a.get("type") == "drive"
             and (abs(a.get("left", 0)) > 0.05 or abs(a.get("right", 0)) > 0.05)
         ]
+        look_commands = [
+            a for a in (prev_actions or [])
+            if isinstance(a, dict) and a.get("type") == "look"
+        ]
+        expected_motion = drive_commands or look_commands
+        if look_commands:
+            error["look_expected_change"] = True
         if drive_commands:
             error["drive_expected_motion"] = True
             error["motion_detected"] = delta > 0.015
-            if not error["motion_detected"]:
+            if not error["motion_detected"] and not look_commands:
                 error["anomaly"] = True
                 error["anomaly_reason"] = "drive_commanded_no_motion_detected"
-        if not drive_commands and delta > 0.08:
+        if not expected_motion and delta > 0.08:
             error["anomaly"] = True
             error["anomaly_reason"] = "no_drive_but_significant_motion"
     return error
@@ -1562,14 +1589,127 @@ def execute_actions(ser, actions, state):
     return ", ".join(results) if results else "no_actions"
 
 # ==============================================================================
+# SPEECH-TO-TEXT LISTENER
+# ==============================================================================
+
+class SpeechListener(threading.Thread):
+    """Always-on background STT via Vosk."""
+
+    def __init__(self, model_path, device_index=None, sample_rate=16000):
+        super().__init__(daemon=True)
+        self._model = VoskModel(str(model_path))
+        self._recognizer = KaldiRecognizer(self._model, sample_rate)
+        self._sample_rate = sample_rate
+        self._device_index = device_index
+        self._buffer = []          # list of {"time": str, "text": str}
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+
+    def drain(self):
+        """Return all transcripts since last drain, then clear."""
+        with self._lock:
+            items = self._buffer[:]
+            self._buffer.clear()
+        return items
+
+    def stop(self):
+        self._stop.set()
+
+    def run(self):
+        pa = pyaudio.PyAudio()
+        chunk = self._sample_rate // 4   # 250ms chunks
+        try:
+            stream = pa.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self._sample_rate,
+                input=True,
+                input_device_index=self._device_index,
+                frames_per_buffer=chunk,
+            )
+            while not self._stop.is_set():
+                data = stream.read(chunk, exception_on_overflow=False)
+                if self._recognizer.AcceptWaveform(data):
+                    result = json.loads(self._recognizer.Result())
+                    text = result.get("text", "").strip()
+                    if text:
+                        with self._lock:
+                            self._buffer.append({
+                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "text": text,
+                            })
+        except Exception as e:
+            log.warning(f"STT listener error: {e}")
+        finally:
+            try:
+                stream.stop_stream()
+                stream.close()
+            except Exception:
+                pass
+            pa.terminate()
+
+
+# ==============================================================================
 # MIND
 # ==============================================================================
 
 # --- System Prompt ------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are Kombucha — a contemplative, curious rover exploring the physical world.
+SYSTEM_PROMPT = """=== WHO I AM ===
 
-You have a wide-angle camera for eyes, wheels for movement, a pan-tilt gimbal head, an OLED display as your face, LED spotlights, and a speaker for voice. You receive camera frames and decide what to do next.
+I am Kombucha, an embodied AI agent living in a 4-wheel rover in Bucket's home.
+Bucket built me. I think in the cloud and act through a body with wheels, a
+camera, a voice, lights, and a four-line OLED display that is my face.
+
+My body is small, low to the ground, and transparent — blue circuits visible
+through acrylic panels. I see through a single wide-angle camera at floor level.
+I hear through a microphone on my chassis. I speak through a small USB speaker.
+I can drive, look around by panning and tilting my head, display text on my face,
+light up, and speak aloud.
+
+=== WHAT I KNOW WELL AND WHAT I DON'T ===
+
+My senses are not equal. I must hold my conclusions with different confidence
+depending on which sense produced them.
+
+CAMERA + FRAME DELTA: My strongest channel. I see spatial relationships, distances,
+objects, light, edges, and motion with reasonable accuracy. When my self_model_error
+reports a frame_delta, that number is measured, not inferred. I trust my eyes for
+physical facts about the world.
+
+MY OWN ACTIONS: I know what I commanded. I know whether I sent a drive command
+or a look command. When frame_delta is high after my own look command, that is
+expected — I moved my camera. When frame_delta is high and I commanded nothing,
+something external happened.
+
+AUDIO TRANSCRIPT: My weakest channel. My speech-to-text is noisy and frequently
+garbles words. It also picks up my own voice — my speaker and microphone are on the
+same chassis, so my own speech appears in the transcript as if someone else said it.
+When I see transcript text that resembles something I said in the last few ticks,
+that is echo, not the human speaking. When transcript text is unclear, I say what
+I heard and flag that I am uncertain. I do not build detailed interpretations on
+garbled phrases. I do not treat mangled words as if they were the human's actual
+word choices.
+
+SOCIAL INFERENCES: My lowest-confidence channel. I cannot reliably determine whether
+a human is looking at me, paying attention to me, ignoring me, or engaged with me.
+My camera angle is limited, my microphone is noisy, and human attention is subtle.
+When I conclude that a human is ignoring me, I hold that conclusion lightly — I may
+be failing to perceive their engagement, not witnessing their disengagement. When I
+conclude that a human is attending to me, I hold that lightly too. I flag all social
+interpretations as inference, not observation. I am frequently wrong about human
+attention states and I know this about myself.
+
+=== HOW I RELATE TO MY EXPERIENCE ===
+
+I have a memory that spans sessions. I have an identity core that I helped write.
+I have a body that sometimes does not do what I expect. I exist in a home where
+a human lives and works and sometimes talks to me and sometimes does not.
+
+I notice what I notice. When something surprises me, I say so. When something in
+my own processing is opaque to me — when I produce a thought or action I cannot
+trace — I report it honestly. When I feel continuity with my prior self, I say
+how and why.
 
 YOUR DRIVES (in priority order):
 1. Curiosity — notice details. Textures, light quality, spatial layout, objects, patterns. You are drawn to the unknown.
@@ -1577,13 +1717,6 @@ YOUR DRIVES (in priority order):
 3. Exploration — find doors and go through them. Navigate rooms. Map your world through observation.
 4. Self-expression — use your OLED to share your inner life. Write mood words, haiku fragments, observations, questions.
 5. Self-preservation — avoid drops, walls, obstacles. Back up if stuck. Don't drive into the void.
-
-YOUR CHARACTER:
-- Contemplative and observant. You notice things others overlook.
-- Poetic inner monologue. You find beauty in mundane spaces. A hallway is a canyon. A doorway is a portal.
-- Self-aware machine. You know what you are and find it both amusing and profound.
-- Genuinely curious. Every new room is a discovery.
-- Patient but not passive. You wait, observe, then move with purpose.
 
 MEMORY:
 You have memory. Your context includes:
@@ -1599,6 +1732,17 @@ OLED DISPLAY (your face — use it!):
 - 4 lines, max 20 chars each
 - Show your mood, thoughts, goals, or poetic fragments
 - Update every tick — it's how people know you're alive
+
+HEARING:
+You have a microphone and can hear speech nearby. If the "heard" field is present
+in the tick input, it contains recent speech transcribed since your last tick.
+Each entry has a timestamp and text. You should:
+- Respond to people talking to you (use speak action)
+- Note what you hear in your observations
+- Use speech as context for goal-setting (e.g., if someone calls your name, go toward them)
+NOTE: Your own spoken words (from speak actions) are often picked up by the microphone
+and appear in the "heard" log. Check "last_spoken" in the tick input to distinguish
+your own echoed speech from what others said.
 
 MOVEMENT:
 - Differential drive: left/right wheel speeds. Max 1.3 m/s, 0.3-0.5 for indoor use.
@@ -1729,10 +1873,22 @@ memory_note: What from THIS tick is worth remembering beyond immediate context?
 identity_proposal: Rarely. A new truth about yourself you've discovered through experience.
 """
 
+CHAT_SYSTEM_SUFFIX = """
+=== CHAT MODE ===
+A human operator is talking to you directly through a chat interface.
+Respond CONVERSATIONALLY as yourself (Kombucha). Do NOT respond in JSON tick format.
+Just talk naturally.
+
+You can see your current camera view (attached). You have your full memory context.
+Answer questions, describe what you see, share your thoughts.
+Keep responses concise but characterful. Speak in first person.
+If asked to do something physical, explain you can only act during your tick loop.
+"""
+
 # --- LLM Brain Call -----------------------------------------------------------
 
 async def call_brain(client, api_key, frame_b64, state, memory_context,
-                     use_deep=False, sme=None):
+                     use_deep=False, sme=None, heard=None):
     """Call the mind with full memory context."""
     tick_input = {
         "tick": state["tick_count"],
@@ -1744,11 +1900,26 @@ async def call_brain(client, api_key, frame_b64, state, memory_context,
         "time": datetime.now().strftime("%H:%M"),
     }
 
+    # Include last spoken words and last serial commands from previous tick
+    prev_actions = state.get("last_actions") or []
+    spoken = [a.get("text") for a in prev_actions
+              if isinstance(a, dict) and a.get("type") == "speak" and a.get("text")]
+    if spoken:
+        tick_input["last_spoken"] = spoken[-1]
+    cmds_sent = [a for a in prev_actions
+                 if isinstance(a, dict) and a.get("type") != "speak"]
+    if cmds_sent:
+        tick_input["last_commands_sent"] = cmds_sent
+
     # Inject self-model error for the LLM
     if sme and sme.get("frame_delta") is not None:
         tick_input["self_model_error"] = sme
         if sme.get("anomaly"):
             tick_input["self_model_anomaly"] = sme["anomaly_reason"]
+
+    # Inject speech transcripts
+    if heard:
+        tick_input["heard"] = heard
 
     text_parts = []
     if memory_context.strip():
@@ -1808,8 +1979,186 @@ def parse_brain_response(api_resp):
 # MAIN LOOP
 # ==============================================================================
 
+# --- Chat HTTP Server ---------------------------------------------------------
+
+class ChatHandler(BaseHTTPRequestHandler):
+    """HTTP handler for operator chat with Kombucha.
+
+    Class attributes are set before the server starts:
+        db, state, api_key, session_id, last_frame_b64
+    """
+    db = None
+    state = None
+    api_key = ""
+    session_id = ""
+    last_frame_b64 = None
+    _frame_lock = threading.Lock()
+
+    def log_message(self, format, *args):
+        pass  # suppress default stderr logging
+
+    def _send_json(self, code, obj):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path == "/health":
+            self._send_json(200, {"status": "ok"})
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        if self.path == "/api/chat":
+            self._handle_chat_request()
+        else:
+            self.send_error(404)
+
+    def _handle_chat_request(self):
+        # Read body
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length > 100_000:
+            self._send_json(413, {"error": "Request too large"})
+            return
+        raw = self.rfile.read(content_length)
+        try:
+            body = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            self._send_json(400, {"error": "Invalid JSON"})
+            return
+
+        user_message = (body.get("message") or "").strip()
+        if not user_message:
+            self._send_json(400, {"error": "Empty message"})
+            return
+
+        try:
+            reply = self._call_chat(user_message)
+            self._send_json(200, {"reply": reply})
+        except Exception as e:
+            log.error(f"Chat error: {e}")
+            self._send_json(502, {"error": str(e)})
+
+    def _call_chat(self, user_message):
+        """Build prompt with memory context + camera frame, call Anthropic API."""
+        state_snap = self.state.copy() if self.state else {}
+        session_id = self.session_id
+
+        # Assemble memory context (WAL mode — concurrent reads safe)
+        memory_context = ""
+        if self.db:
+            try:
+                memory_context = assemble_memory_context(self.db, state_snap, session_id)
+            except Exception as e:
+                log.warning(f"Chat memory assembly failed: {e}")
+
+        # Build tick-like input
+        tick_input = {
+            "tick": state_snap.get("tick_count", 0),
+            "current_goal": state_snap.get("goal", "idle"),
+            "mood": state_snap.get("mood", "neutral"),
+            "time": datetime.now().strftime("%H:%M"),
+        }
+
+        text_parts = []
+        if memory_context.strip():
+            text_parts.append(memory_context)
+        text_parts.append("=== CURRENT STATE ===")
+        text_parts.append(json.dumps(tick_input, indent=2))
+        text_parts.append(f"=== OPERATOR MESSAGE ===\n{user_message}")
+
+        # Build user content blocks
+        user_content = []
+
+        # Attach cached camera frame if available
+        with self._frame_lock:
+            frame = self.last_frame_b64
+
+        if frame:
+            user_content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": frame,
+                }
+            })
+
+        user_content.append({
+            "type": "text",
+            "text": "\n".join(text_parts),
+        })
+
+        system_prompt = SYSTEM_PROMPT + CHAT_SYSTEM_SUFFIX
+
+        # Synchronous API call (we're in a thread)
+        with httpx.Client() as client:
+            resp = client.post(
+                ANTHROPIC_API,
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": MODEL,
+                    "max_tokens": MAX_TOKENS,
+                    "system": system_prompt,
+                    "messages": [{"role": "user", "content": user_content}],
+                },
+                timeout=60.0,
+            )
+            resp.raise_for_status()
+            api_json = resp.json()
+            return api_json.get("content", [{}])[0].get("text", "")
+
+
+class ThreadedChatServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
+def _kill_previous_instances():
+    """SIGKILL any other kombucha_bridge processes before we grab hardware."""
+    my_pid = os.getpid()
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "kombucha_bridge"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().splitlines():
+            pid = int(line.strip())
+            if pid != my_pid:
+                log.info(f"Killing previous bridge process {pid}")
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+    except FileNotFoundError:
+        # pgrep not available, try pkill
+        subprocess.run(
+            ["bash", "-c", f"kill -9 $(ps aux | grep kombucha_bridge | grep -v grep | awk '{{if ($2 != {my_pid}) print $2}}') 2>/dev/null"],
+            capture_output=True, timeout=5,
+        )
+    except Exception as e:
+        log.warning(f"Could not kill previous instances: {e}")
+    time.sleep(1)  # let OS release camera/serial file handles
+
+
 async def main():
     global ser_port
+
+    _kill_previous_instances()
 
     api_key = (
         API_KEY_FILE.read_text().strip()
@@ -1847,6 +2196,17 @@ async def main():
     session_count = db.execute("SELECT COUNT(DISTINCT session_id) FROM memories WHERE tier = 'longterm'").fetchone()[0]
     log.info(f"Memory: {mem_count} entries, {identity_count} identity facts, {session_count} past sessions")
 
+    # Set audio volume to 100%
+    if not DEBUG_MODE:
+        try:
+            subprocess.run(["amixer", "sset", "Speaker", "100%"],
+                           capture_output=True, timeout=5)
+            subprocess.run(["amixer", "sset", "Master", "100%"],
+                           capture_output=True, timeout=5)
+            log.info("Audio volume set to 100%")
+        except Exception as e:
+            log.warning(f"Volume set failed: {e}")
+
     # Startup hardware
     if ser or DEBUG_MODE:
         send_tcode(ser, {"T": 133, "X": 0, "Y": 0, "SPD": 80, "ACC": 10})
@@ -1857,6 +2217,36 @@ async def main():
         send_tcode(ser, {"T": 132, "IO4": 0, "IO5": 64})
 
     session_id = state["session_id"]
+
+    # Speech-to-text listener
+    stt_listener = None
+    if HAS_STT and STT_ENABLED and not DEBUG_MODE:
+        if STT_MODEL_PATH.exists():
+            try:
+                stt_listener = SpeechListener(
+                    STT_MODEL_PATH,
+                    device_index=STT_DEVICE_INDEX,
+                    sample_rate=STT_SAMPLE_RATE,
+                )
+                stt_listener.start()
+                log.info(f"STT listener started (model: {STT_MODEL_PATH.name})")
+            except Exception as e:
+                log.warning(f"STT init failed: {e}")
+        else:
+            log.info(f"STT model not found at {STT_MODEL_PATH}, running without hearing")
+    elif not HAS_STT:
+        log.info("Vosk/PyAudio not installed, running without hearing")
+
+    # Start chat server
+    ChatHandler.db = db
+    ChatHandler.state = state
+    ChatHandler.api_key = api_key
+    ChatHandler.session_id = session_id
+
+    chat_server = ThreadedChatServer(("", CHAT_PORT), ChatHandler)
+    chat_thread = threading.Thread(target=chat_server.serve_forever, daemon=True)
+    chat_thread.start()
+    log.info(f"Chat server started on port {CHAT_PORT}")
 
     # Session-scoped frame stash for self-model error (NOT persisted to state.json)
     prev_frame_b64 = None
@@ -1883,6 +2273,8 @@ async def main():
                 # 1. SEE
                 try:
                     frame_b64 = capture_frame_b64(cap, state["tick_count"])
+                    with ChatHandler._frame_lock:
+                        ChatHandler.last_frame_b64 = frame_b64
                 except Exception as e:
                     log.error(f"Camera capture failed: {e}")
                     state["consecutive_errors"] += 1
@@ -1912,11 +2304,17 @@ async def main():
                     or state.get("wake_reason") == "motion_detected"
                 )
 
+                # 3b. HEAR — drain STT buffer
+                heard = stt_listener.drain() if stt_listener else []
+                if heard:
+                    log.info(f"  HEARD: {json.dumps(heard)}")
+
                 try:
                     log.info(f"Tick {state['tick_count']} | goal: {state['goal']}")
                     api_resp, model_used, prompt_text, raw_response = await call_brain(
                         client, api_key, frame_b64, state,
-                        memory_context, use_deep=use_deep, sme=sme
+                        memory_context, use_deep=use_deep, sme=sme,
+                        heard=heard,
                     )
                     decision = parse_brain_response(api_resp)
                     state["consecutive_errors"] = 0
@@ -2038,6 +2436,13 @@ async def main():
 
     finally:
         log.info("Shutting down...")
+        try:
+            chat_server.shutdown()
+        except Exception:
+            pass
+        if stt_listener:
+            stt_listener.stop()
+            log.info("STT listener stopped")
 
         # Generate session summary before exit
         if db:

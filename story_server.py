@@ -21,6 +21,8 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from socketserver import ThreadingMixIn
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 # ---------------------------------------------------------------------------
 # Config
@@ -37,6 +39,9 @@ LOCAL_FRAMES = LOCAL_DIR / "frames"
 LOCAL_STATE = LOCAL_DIR / "data" / "state.json"
 
 SYNC_INTERVAL = 8  # seconds between syncs
+
+PI_CHAT_URL = "http://kombucha.local:8090/api/chat"
+CHAT_TIMEOUT = 60
 
 # ---------------------------------------------------------------------------
 # JSONL Journal Parser
@@ -222,7 +227,32 @@ class SyncThread(threading.Thread):
             self._stop_event.wait(SYNC_INTERVAL)
 
     def _sync_once(self):
-        # 1. Pull JSONL journal files
+        # 1. Pull new frames FIRST (so they're available when journal is parsed)
+        try:
+            try:
+                subprocess.run(
+                    [
+                        "rsync", "-az", "--ignore-existing",
+                        f"{PI_HOST}:{PI_FRAMES_DIR}",
+                        str(LOCAL_FRAMES) + "/",
+                    ],
+                    capture_output=True, timeout=30,
+                )
+            except FileNotFoundError:
+                subprocess.run(
+                    [
+                        "scp", "-q",
+                        f"{PI_HOST}:{PI_FRAMES_DIR}tick_*.jpg",
+                        str(LOCAL_FRAMES) + "/",
+                    ],
+                    capture_output=True, timeout=30,
+                )
+        except subprocess.TimeoutExpired:
+            print("[sync] Frame sync timed out")
+        except Exception as e:
+            print(f"[sync] Frame sync error: {e}")
+
+        # 2. Pull JSONL journal files (after frames, so attach_frames finds them)
         try:
             try:
                 subprocess.run(
@@ -247,31 +277,6 @@ class SyncThread(threading.Thread):
             print("[sync] Journal sync timed out")
         except Exception as e:
             print(f"[sync] Journal sync error: {e}")
-
-        # 2. Pull new frames
-        try:
-            try:
-                subprocess.run(
-                    [
-                        "rsync", "-az", "--ignore-existing",
-                        f"{PI_HOST}:{PI_FRAMES_DIR}",
-                        str(LOCAL_FRAMES) + "/",
-                    ],
-                    capture_output=True, timeout=30,
-                )
-            except FileNotFoundError:
-                subprocess.run(
-                    [
-                        "scp", "-q",
-                        f"{PI_HOST}:{PI_FRAMES_DIR}tick_*.jpg",
-                        str(LOCAL_FRAMES) + "/",
-                    ],
-                    capture_output=True, timeout=30,
-                )
-        except subprocess.TimeoutExpired:
-            print("[sync] Frame sync timed out")
-        except Exception as e:
-            print(f"[sync] Frame sync error: {e}")
 
         # 3. Pull rover state
         try:
@@ -396,6 +401,52 @@ class StoryHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/chat":
+            self._proxy_chat()
+        else:
+            self.send_error(404)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def _proxy_chat(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+        try:
+            req = Request(
+                PI_CHAT_URL,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(req, timeout=CHAT_TIMEOUT) as resp:
+                result = resp.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(result)
+        except URLError as e:
+            err = json.dumps({"error": f"Cannot reach rover: {e}"}).encode("utf-8")
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(err)
+        except Exception as e:
+            err = json.dumps({"error": str(e)}).encode("utf-8")
+            self.send_response(502)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(err)
+
     def _serve_html(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -518,12 +569,132 @@ HTML_PAGE = r"""<!DOCTYPE html>
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.5;
-    overflow-y: auto;
+    overflow: hidden;
   }
 
   ::-webkit-scrollbar { width: 8px; }
   ::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
   ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+
+  #main {
+    display: flex;
+    height: calc(100vh - 52px);
+    overflow: hidden;
+  }
+
+  #chat-panel {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--card-border);
+    background: var(--bg);
+  }
+
+  #journal-panel {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .chat-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--card-border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-bright);
+  }
+
+  #chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chat-msg {
+    max-width: 85%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.45;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+  }
+
+  .chat-msg.user {
+    align-self: flex-end;
+    background: var(--accent-dim);
+    color: var(--text-bright);
+    border-bottom-right-radius: 2px;
+  }
+
+  .chat-msg.kombucha {
+    align-self: flex-start;
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid var(--card-border);
+    border-bottom-left-radius: 2px;
+  }
+
+  .chat-msg.error {
+    align-self: flex-start;
+    background: #3d1a1a;
+    color: #f85149;
+    border: 1px solid #da3633;
+    font-size: 12px;
+  }
+
+  .chat-msg.thinking {
+    align-self: flex-start;
+    color: var(--text-dim);
+    font-style: italic;
+    background: none;
+    padding: 4px 12px;
+  }
+
+  .chat-input-area {
+    padding: 10px 12px;
+    border-top: 1px solid var(--card-border);
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  #chat-input {
+    flex: 1;
+    background: var(--card-bg);
+    color: var(--text);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: none;
+    min-height: 36px;
+    max-height: 120px;
+    outline: none;
+  }
+
+  #chat-input:focus {
+    border-color: var(--accent);
+  }
+
+  #chat-send {
+    background: var(--accent-dim);
+    color: var(--text-bright);
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  #chat-send:hover { background: var(--accent); }
+  #chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
 
   header {
     position: sticky;
@@ -592,8 +763,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
   }
 
   #feed {
-    max-width: 900px;
-    margin: 0 auto;
     padding: 16px;
     display: flex;
     flex-direction: column;
@@ -1105,6 +1274,12 @@ HTML_PAGE = r"""<!DOCTYPE html>
     cursor: pointer;
   }
 
+  @media (max-width: 900px) {
+    #main { flex-direction: column; }
+    #chat-panel { flex: 0 0 auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--card-border); }
+    #journal-panel { flex: 1; }
+  }
+
   @media (max-width: 700px) {
     .tick-card { flex-direction: column; }
     .tick-frame { flex: 0 0 auto; max-height: 250px; }
@@ -1122,8 +1297,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div class="telemetry" id="telemetry"></div>
 </header>
 
-<div id="feed"></div>
-<div id="sentinel"></div>
+<div id="main">
+  <div id="chat-panel">
+    <div class="chat-header">Chat with Kombucha</div>
+    <div id="chat-messages"></div>
+    <div class="chat-input-area">
+      <textarea id="chat-input" rows="1" placeholder="Say something to Kombucha..."></textarea>
+      <button id="chat-send" onclick="sendChat()">Send</button>
+    </div>
+  </div>
+  <div id="journal-panel">
+    <div id="feed"></div>
+    <div id="sentinel"></div>
+  </div>
+</div>
 
 <button class="auto-scroll-badge" id="scrollBtn" onclick="scrollToTop()">
   New ticks above
@@ -1149,6 +1336,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
   const statusText = document.getElementById('statusText');
   const tickCountEl = document.getElementById('tickCount');
   const scrollBtn = document.getElementById('scrollBtn');
+  const journalPanel = document.getElementById('journal-panel');
+  const chatMessages = document.getElementById('chat-messages');
+  const chatInput = document.getElementById('chat-input');
+  const chatSendBtn = document.getElementById('chat-send');
 
   // --- Full-frame overlay ---
   function showFullFrame(src, tickJson) {
@@ -1206,6 +1397,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
     }
   });
 
+  window.showInspect = function(tickNum, field) {
+    var data = tickInspectData[tickNum];
+    if (!data) return;
+    var label = field === 'prompt' ? 'Prompt' : 'Response';
+    showTextOverlay(label + ' \u2014 Tick #' + tickNum, data[field] || '');
+  };
+
   function showTextOverlay(title, text) {
     document.getElementById('textOverlayTitle').textContent = title;
     document.getElementById('textOverlayPre').textContent = text;
@@ -1218,6 +1416,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   }
 
   let allTicks = [];
+  let tickInspectData = {};  // tick_num -> {prompt, raw_response}
   let loadedTickIds = new Set();
   let loading = false;
   let totalTicks = 0;
@@ -1391,12 +1590,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
       ? '<div class="tick-note">' + escHtml(t.memory_note) + '</div>'
       : '';
 
-    // Prompt/Response inspect icons
+    // Prompt/Response inspect icons — store data in JS map, reference by tick num
     var inspectHtml = '';
     if (t.prompt || t.raw_response) {
+      tickInspectData[t.tick] = { prompt: t.prompt || null, raw_response: t.raw_response || null };
       inspectHtml = '<div class="tick-inspect-icons">';
-      if (t.prompt) inspectHtml += '<span class="inspect-btn" onclick="event.stopPropagation();showTextOverlay(\'Prompt \\u2014 Tick #' + t.tick + '\', ' + JSON.stringify(JSON.stringify(t.prompt)) + ')" title="View prompt">P</span>';
-      if (t.raw_response) inspectHtml += '<span class="inspect-btn" onclick="event.stopPropagation();showTextOverlay(\'Response \\u2014 Tick #' + t.tick + '\', ' + JSON.stringify(JSON.stringify(t.raw_response)) + ')" title="View response">R</span>';
+      if (t.prompt) inspectHtml += '<span class="inspect-btn" onclick="event.stopPropagation();showInspect(' + t.tick + ',\'prompt\')" title="View prompt">P</span>';
+      if (t.raw_response) inspectHtml += '<span class="inspect-btn" onclick="event.stopPropagation();showInspect(' + t.tick + ',\'raw_response\')" title="View response">R</span>';
       inspectHtml += '</div>';
     }
 
@@ -1521,7 +1721,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     if (entries[0].isIntersecting && offset < totalTicks) {
       loadTicks(true);
     }
-  }, { rootMargin: '200px' });
+  }, { root: journalPanel, rootMargin: '200px' });
   observer.observe(sentinel);
 
   // --- SSE for real-time new ticks ---
@@ -1547,7 +1747,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         feed.insertBefore(card, feed.firstChild);
 
         if (autoScroll) {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          journalPanel.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
           newTicksPending = true;
           scrollBtn.classList.add('visible');
@@ -1567,10 +1767,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   // --- Auto-scroll detection ---
   var scrollTimer;
-  window.addEventListener('scroll', function() {
+  journalPanel.addEventListener('scroll', function() {
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function() {
-      autoScroll = window.scrollY < 100;
+      autoScroll = journalPanel.scrollTop < 100;
       if (autoScroll && newTicksPending) {
         newTicksPending = false;
         scrollBtn.classList.remove('visible');
@@ -1579,7 +1779,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   });
 
   window.scrollToTop = function() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    journalPanel.scrollTo({ top: 0, behavior: 'smooth' });
     autoScroll = true;
     newTicksPending = false;
     scrollBtn.classList.remove('visible');
@@ -1652,6 +1852,69 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   updateTelemetry();
   setInterval(updateTelemetry, 5000);
+
+  // --- Chat functions ---
+  function appendChatMsg(text, cls) {
+    var el = document.createElement('div');
+    el.className = 'chat-msg ' + cls;
+    el.textContent = text;
+    chatMessages.appendChild(el);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return el;
+  }
+
+  var chatBusy = false;
+
+  window.sendChat = function() {
+    var msg = chatInput.value.trim();
+    if (!msg || chatBusy) return;
+
+    appendChatMsg(msg, 'user');
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+    chatBusy = true;
+    chatSendBtn.disabled = true;
+
+    var thinkEl = appendChatMsg('Kombucha is thinking...', 'thinking');
+
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg }),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      thinkEl.remove();
+      if (data.error) {
+        appendChatMsg('Error: ' + data.error, 'error');
+      } else {
+        appendChatMsg(data.reply || '(no response)', 'kombucha');
+      }
+    })
+    .catch(function(err) {
+      thinkEl.remove();
+      appendChatMsg('Connection error: ' + err.message, 'error');
+    })
+    .finally(function() {
+      chatBusy = false;
+      chatSendBtn.disabled = false;
+      chatInput.focus();
+    });
+  };
+
+  // Auto-resize textarea
+  chatInput.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  // Enter to send, Shift+Enter for newline
+  chatInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendChat();
+    }
+  });
 
   // --- Init ---
   loadTicks(false).then(function() {

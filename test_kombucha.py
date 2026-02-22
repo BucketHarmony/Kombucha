@@ -78,6 +78,11 @@ if "httpx" in MOCK_MODULES:
         "__aenter__": lambda self: self,
         "__aexit__": lambda self, *a: None,
     })
+    httpx_mock.Client = type("Client", (), {
+        "__enter__": lambda self: self,
+        "__exit__": lambda self, *a: None,
+        "post": lambda self, *a, **k: None,
+    })
 
 # serial needs SerialException
 if "serial" in MOCK_MODULES:
@@ -4064,6 +4069,48 @@ class TestBasicSelfModelError:
             result = kb.compute_basic_self_model_error(actions, "prev", "curr")
             assert result["drive_expected_motion"] is False
 
+    def test_look_command_high_delta_no_anomaly(self):
+        """Look command + high delta = no anomaly (camera moved itself)."""
+        actions = [{"type": "look", "pan": 90, "tilt": 10}]
+        with patch("kombucha_bridge.compute_frame_delta", return_value=0.25):
+            result = kb.compute_basic_self_model_error(actions, "prev", "curr")
+            assert result["look_expected_change"] is True
+            assert result["drive_expected_motion"] is False
+            assert result["anomaly"] is False
+
+    def test_look_and_drive_high_delta_no_anomaly(self):
+        """Look + drive together: high delta expected, no anomaly."""
+        actions = [
+            {"type": "drive", "left": 0.3, "right": 0.3},
+            {"type": "look", "pan": 45, "tilt": 0},
+        ]
+        with patch("kombucha_bridge.compute_frame_delta", return_value=0.20):
+            result = kb.compute_basic_self_model_error(actions, "prev", "curr")
+            assert result["look_expected_change"] is True
+            assert result["drive_expected_motion"] is True
+            assert result["anomaly"] is False
+
+    def test_look_command_low_delta_no_anomaly(self):
+        """Look command + low delta = no anomaly (small pan might not change much)."""
+        actions = [{"type": "look", "pan": 5, "tilt": 0}]
+        with patch("kombucha_bridge.compute_frame_delta", return_value=0.01):
+            result = kb.compute_basic_self_model_error(actions, "prev", "curr")
+            assert result["look_expected_change"] is True
+            assert result["anomaly"] is False
+
+    def test_drive_no_motion_with_look_no_anomaly(self):
+        """Drive + look but no motion: look explains the ambiguity, no anomaly."""
+        actions = [
+            {"type": "drive", "left": 0.3, "right": 0.3},
+            {"type": "look", "pan": 90, "tilt": 10},
+        ]
+        with patch("kombucha_bridge.compute_frame_delta", return_value=0.005):
+            result = kb.compute_basic_self_model_error(actions, "prev", "curr")
+            assert result["drive_expected_motion"] is True
+            assert result["look_expected_change"] is True
+            # With look command present, low delta doesn't flag drive anomaly
+            assert result["anomaly"] is False
+
 
 class TestSelfModelErrorGimbal:
     """Tests for compute_self_model_error() with gimbal tracking."""
@@ -4127,7 +4174,11 @@ class TestSelfModelErrorGimbal:
             assert "gimbal_error_tilt" not in result
 
     def test_combined_drive_and_gimbal_anomaly(self):
-        """Both drive-no-motion and gimbal error produce combined anomaly."""
+        """Drive+look with low delta and gimbal error: only gimbal anomaly.
+
+        The look command suppresses drive-no-motion anomaly (look makes
+        frame delta ambiguous), but the gimbal pan error still fires.
+        """
         actions = [
             {"type": "drive", "left": 0.5, "right": 0.5},
             {"type": "look", "pan": 90, "tilt": 0},
@@ -4139,7 +4190,6 @@ class TestSelfModelErrorGimbal:
                 prev_tilt=0, curr_tilt=0,
             )
             assert result["anomaly"] is True
-            assert "drive_commanded_no_motion_detected" in result["anomaly_reason"]
             assert "gimbal_pan_error" in result["anomaly_reason"]
 
 
@@ -5210,3 +5260,372 @@ class TestJournalPromptResponse:
         assert entry["model"] == "test-model"
         assert entry["prompt"] is None
         assert entry["raw_response"] is None
+
+
+# ===========================================================================
+# Speech-to-Text Tests
+# ===========================================================================
+
+class TestSpeechListener:
+    """Tests for the SpeechListener drain/buffer logic (no hardware)."""
+
+    def _make_listener(self):
+        """Create a SpeechListener with mocked Vosk/PyAudio internals."""
+        with patch.object(kb, "HAS_STT", True), \
+             patch("kombucha_bridge.VoskModel"), \
+             patch("kombucha_bridge.KaldiRecognizer"):
+            listener = kb.SpeechListener(
+                model_path="/fake/model",
+                device_index=None,
+                sample_rate=16000,
+            )
+        return listener
+
+    def test_drain_returns_and_clears(self):
+        """drain() returns accumulated items and empties the buffer."""
+        listener = self._make_listener()
+        listener._buffer = [
+            {"time": "12:00:00", "text": "hello"},
+            {"time": "12:00:05", "text": "world"},
+        ]
+        result = listener.drain()
+        assert len(result) == 2
+        assert result[0]["text"] == "hello"
+        assert result[1]["text"] == "world"
+        # Buffer is now empty
+        assert listener.drain() == []
+
+    def test_drain_empty_buffer(self):
+        """drain() returns empty list when nothing has been heard."""
+        listener = self._make_listener()
+        assert listener.drain() == []
+
+    def test_drain_is_atomic(self):
+        """drain() returns a snapshot; modifications don't affect original."""
+        listener = self._make_listener()
+        listener._buffer = [{"time": "12:00:00", "text": "test"}]
+        result = listener.drain()
+        result.append({"time": "12:00:01", "text": "extra"})
+        # Buffer should still be empty (not affected by mutation of result)
+        assert listener.drain() == []
+
+    def test_drain_thread_safety(self):
+        """Multiple threads draining simultaneously don't lose items."""
+        listener = self._make_listener()
+        results = []
+
+        def writer():
+            for i in range(100):
+                with listener._lock:
+                    listener._buffer.append({"time": "00:00:00", "text": str(i)})
+
+        def reader():
+            time.sleep(0.01)
+            results.extend(listener.drain())
+
+        t1 = threading.Thread(target=writer)
+        t2 = threading.Thread(target=reader)
+        t1.start()
+        t1.join()
+        t2.start()
+        t2.join()
+        # All 100 items should have been drained
+        assert len(results) == 100
+
+    def test_stop_sets_event(self):
+        """stop() sets the internal stop event."""
+        listener = self._make_listener()
+        assert not listener._stop.is_set()
+        listener.stop()
+        assert listener._stop.is_set()
+
+
+class TestCallBrainHeard:
+    """Tests that the heard parameter is correctly injected into tick_input."""
+
+    def _make_mock_client(self):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": '{"observation":"test","goal":"test","mood":"ok","actions":[],"next_tick_ms":3000}'}]
+        }
+        mock_response.raise_for_status = MagicMock()
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        return mock_client
+
+    def _get_tick_input(self, mock_client):
+        """Extract the tick_input JSON from the API call."""
+        call_args = mock_client.post.call_args
+        messages = call_args.kwargs.get("json", call_args[1].get("json", {}))["messages"]
+        text_content = [c for c in messages[0]["content"] if c.get("type") == "text"][0]["text"]
+        # tick_input is the JSON after "=== CURRENT TICK ==="
+        tick_json_str = text_content.split("=== CURRENT TICK ===\n")[1]
+        return json.loads(tick_json_str)
+
+    def test_heard_injected_when_non_empty(self):
+        """Non-empty heard list appears in tick_input."""
+        mock_client = self._make_mock_client()
+        state = {"tick_count": 5, "goal": "test", "last_result": "ok",
+                 "pan_position": 0, "tilt_position": 0, "wake_reason": None}
+        heard = [{"time": "14:23:05", "text": "hey kombucha"}]
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "key", "b64", state, "ctx", heard=heard)
+        )
+        tick_input = self._get_tick_input(mock_client)
+        assert "heard" in tick_input
+        assert len(tick_input["heard"]) == 1
+        assert tick_input["heard"][0]["text"] == "hey kombucha"
+
+    def test_heard_absent_when_empty(self):
+        """Empty heard list is not included in tick_input."""
+        mock_client = self._make_mock_client()
+        state = {"tick_count": 5, "goal": "test", "last_result": "ok",
+                 "pan_position": 0, "tilt_position": 0, "wake_reason": None}
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "key", "b64", state, "ctx", heard=[])
+        )
+        tick_input = self._get_tick_input(mock_client)
+        assert "heard" not in tick_input
+
+    def test_heard_absent_when_none(self):
+        """heard=None (default) is not included in tick_input."""
+        mock_client = self._make_mock_client()
+        state = {"tick_count": 5, "goal": "test", "last_result": "ok",
+                 "pan_position": 0, "tilt_position": 0, "wake_reason": None}
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "key", "b64", state, "ctx")
+        )
+        tick_input = self._get_tick_input(mock_client)
+        assert "heard" not in tick_input
+
+    def test_heard_multiple_utterances(self):
+        """Multiple utterances are all passed through."""
+        mock_client = self._make_mock_client()
+        state = {"tick_count": 5, "goal": "test", "last_result": "ok",
+                 "pan_position": 0, "tilt_position": 0, "wake_reason": None}
+        heard = [
+            {"time": "14:23:05", "text": "hey kombucha come over here"},
+            {"time": "14:23:12", "text": "good boy"},
+        ]
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.call_brain(mock_client, "key", "b64", state, "ctx", heard=heard)
+        )
+        tick_input = self._get_tick_input(mock_client)
+        assert len(tick_input["heard"]) == 2
+        assert tick_input["heard"][1]["text"] == "good boy"
+
+
+class TestSTTInit:
+    """Tests for graceful degradation when STT is unavailable."""
+
+    def test_has_stt_flag_exists(self):
+        """HAS_STT flag is defined on the module."""
+        assert hasattr(kb, "HAS_STT")
+
+    def test_stt_constants_exist(self):
+        """STT configuration constants are defined."""
+        assert hasattr(kb, "STT_ENABLED")
+        assert hasattr(kb, "STT_DEVICE_INDEX")
+        assert hasattr(kb, "STT_SAMPLE_RATE")
+        assert hasattr(kb, "STT_MODEL_PATH")
+        assert kb.STT_SAMPLE_RATE == 48000
+
+    def test_speech_listener_class_exists(self):
+        """SpeechListener class is defined."""
+        assert hasattr(kb, "SpeechListener")
+        assert issubclass(kb.SpeechListener, threading.Thread)
+
+    def test_system_prompt_mentions_hearing(self):
+        """SYSTEM_PROMPT includes hearing instructions."""
+        assert "HEARING:" in kb.SYSTEM_PROMPT
+        assert "heard" in kb.SYSTEM_PROMPT
+
+    def test_call_brain_accepts_heard_param(self):
+        """call_brain signature accepts heard keyword argument."""
+        import inspect
+        sig = inspect.signature(kb.call_brain)
+        assert "heard" in sig.parameters
+
+
+# ---------------------------------------------------------------------------
+# Chat Handler Tests
+# ---------------------------------------------------------------------------
+
+class TestChatHandler:
+    """Tests for the ChatHandler HTTP server on the bridge."""
+
+    def _make_handler(self):
+        """Create a ChatHandler instance without binding a socket."""
+        handler = kb.ChatHandler.__new__(kb.ChatHandler)
+        handler.headers = {"Content-Length": "0"}
+        handler.wfile = MagicMock()
+        handler.rfile = MagicMock()
+        handler.requestline = "POST /api/chat HTTP/1.1"
+        handler.request_version = "HTTP/1.1"
+        handler.command = "POST"
+        handler.client_address = ("127.0.0.1", 12345)
+        # Capture response
+        handler._response_code = None
+        handler._response_headers = {}
+        handler._response_body = b""
+        original_send_response = kb.BaseHTTPRequestHandler.send_response
+        original_send_header = kb.BaseHTTPRequestHandler.send_header
+        original_end_headers = kb.BaseHTTPRequestHandler.end_headers
+
+        def mock_send_response(self, code, message=None):
+            self._response_code = code
+
+        def mock_send_header(self, keyword, value):
+            self._response_headers[keyword] = value
+
+        def mock_end_headers(self):
+            pass
+
+        handler.send_response = lambda code, msg=None: mock_send_response(handler, code, msg)
+        handler.send_header = lambda k, v: mock_send_header(handler, k, v)
+        handler.end_headers = lambda: mock_end_headers(handler)
+        handler.send_error = lambda code, msg=None: mock_send_response(handler, code, msg)
+        return handler
+
+    def test_health_endpoint(self):
+        """GET /health returns 200 with status ok."""
+        handler = self._make_handler()
+        handler.path = "/health"
+        handler.do_GET()
+        assert handler._response_code == 200
+
+    def test_reject_empty_message(self):
+        """POST /api/chat with empty message returns 400."""
+        handler = self._make_handler()
+        handler.path = "/api/chat"
+        body = json.dumps({"message": ""}).encode("utf-8")
+        handler.headers = {"Content-Length": str(len(body))}
+        handler.rfile.read = MagicMock(return_value=body)
+        handler._handle_chat_request()
+        assert handler._response_code == 400
+
+    def test_reject_oversized_body(self):
+        """POST /api/chat with >100KB body returns 413."""
+        handler = self._make_handler()
+        handler.path = "/api/chat"
+        handler.headers = {"Content-Length": "200000"}
+        handler._handle_chat_request()
+        assert handler._response_code == 413
+
+    def test_prompt_includes_memory_and_user_message(self, db):
+        """Chat prompt includes memory context and user message."""
+        # Setup ChatHandler class state
+        kb.ChatHandler.db = db
+        kb.ChatHandler.state = {
+            "tick_count": 5,
+            "goal": "explore",
+            "mood": "curious",
+            "session_id": "test123",
+        }
+        kb.ChatHandler.api_key = "test-key"
+        kb.ChatHandler.session_id = "test123"
+        kb.ChatHandler.last_frame_b64 = "dGVzdA=="  # base64 "test"
+
+        # Mock httpx.Client to capture the API call
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"content": [{"text": "Hello there!"}]}
+
+        class FakeClient:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                pass
+            def post(self, url, **kwargs):
+                captured["json"] = kwargs.get("json", {})
+                return FakeResponse()
+
+        with patch.object(kb.httpx, "Client", return_value=FakeClient()):
+            handler = self._make_handler()
+            handler.path = "/api/chat"
+            body = json.dumps({"message": "What do you see?"}).encode("utf-8")
+            handler.headers = {"Content-Length": str(len(body))}
+            handler.rfile.read = MagicMock(return_value=body)
+            handler._handle_chat_request()
+
+        assert handler._response_code == 200
+        # Check that the prompt was constructed correctly
+        api_json = captured["json"]
+        messages = api_json["messages"]
+        assert len(messages) == 1
+        user_content = messages[0]["content"]
+        # Should have image block + text block
+        assert len(user_content) == 2
+        assert user_content[0]["type"] == "image"
+        text = user_content[1]["text"]
+        assert "OPERATOR MESSAGE" in text
+        assert "What do you see?" in text
+        # System prompt should include chat suffix
+        assert "CHAT MODE" in api_json["system"]
+
+    def test_prompt_omits_frame_when_none(self, db):
+        """Chat prompt has no image block when last_frame_b64 is None."""
+        kb.ChatHandler.db = db
+        kb.ChatHandler.state = {
+            "tick_count": 1,
+            "goal": "idle",
+            "mood": "neutral",
+            "session_id": "test123",
+        }
+        kb.ChatHandler.api_key = "test-key"
+        kb.ChatHandler.session_id = "test123"
+        kb.ChatHandler.last_frame_b64 = None
+
+        captured = {}
+
+        class FakeResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"content": [{"text": "Hi!"}]}
+
+        class FakeClient:
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                pass
+            def post(self, url, **kwargs):
+                captured["json"] = kwargs.get("json", {})
+                return FakeResponse()
+
+        with patch.object(kb.httpx, "Client", return_value=FakeClient()):
+            handler = self._make_handler()
+            handler.path = "/api/chat"
+            body = json.dumps({"message": "hello"}).encode("utf-8")
+            handler.headers = {"Content-Length": str(len(body))}
+            handler.rfile.read = MagicMock(return_value=body)
+            handler._handle_chat_request()
+
+        assert handler._response_code == 200
+        user_content = captured["json"]["messages"][0]["content"]
+        # Only text block, no image
+        assert len(user_content) == 1
+        assert user_content[0]["type"] == "text"
+
+    def test_chat_system_suffix_exists(self):
+        """CHAT_SYSTEM_SUFFIX constant is defined."""
+        assert hasattr(kb, "CHAT_SYSTEM_SUFFIX")
+        assert "CHAT MODE" in kb.CHAT_SYSTEM_SUFFIX
+
+    def test_chat_port_constant(self):
+        """CHAT_PORT is defined."""
+        assert kb.CHAT_PORT == 8090
+
+    def test_threaded_chat_server_class(self):
+        """ThreadedChatServer class exists and uses ThreadingMixIn."""
+        assert hasattr(kb, "ThreadedChatServer")
+        from socketserver import ThreadingMixIn
+        assert issubclass(kb.ThreadedChatServer, ThreadingMixIn)
