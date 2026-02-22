@@ -35,17 +35,24 @@ import types
 
 MOCK_MODULES = {}
 
-for mod_name in ("cv2", "serial", "numpy", "httpx"):
+for mod_name in ("cv2", "serial", "numpy", "httpx", "faster_whisper"):
     if mod_name not in sys.modules:
         MOCK_MODULES[mod_name] = types.ModuleType(mod_name)
         sys.modules[mod_name] = MOCK_MODULES[mod_name]
+
+# faster_whisper needs WhisperModel class
+if "faster_whisper" in MOCK_MODULES:
+    MOCK_MODULES["faster_whisper"].WhisperModel = MagicMock
 
 # numpy needs count_nonzero, GaussianBlur etc — just give it attr access
 if "numpy" in MOCK_MODULES:
     MOCK_MODULES["numpy"].count_nonzero = lambda x: 0
     MOCK_MODULES["numpy"].frombuffer = lambda *a, **k: b"fake"
     MOCK_MODULES["numpy"].uint8 = "uint8"
+    MOCK_MODULES["numpy"].int16 = "int16"
+    MOCK_MODULES["numpy"].float32 = "float32"
     MOCK_MODULES["numpy"].mean = lambda x: 25.5
+    MOCK_MODULES["numpy"].sqrt = lambda x: x ** 0.5
     MOCK_MODULES["numpy"].isscalar = lambda x: isinstance(x, (int, float, complex, str, bytes))
     MOCK_MODULES["numpy"].bool_ = type("bool_", (int,), {})
     MOCK_MODULES["numpy"].ndarray = type("ndarray", (), {})
@@ -1150,6 +1157,36 @@ class TestBrainParser:
         api_resp = {"content": [{"text": "this is not json"}]}
         with pytest.raises(json.JSONDecodeError):
             kb.parse_brain_response(api_resp)
+
+    def test_parse_repairs_truncated_json(self):
+        """Parser repairs JSON truncated by max_tokens."""
+        api_resp = {
+            "content": [{"text": '{"observation":"test","goal":"explore","mood":"curious","actions":[],"next_tick_ms":3000,"thought":"I was thinki'}],
+            "stop_reason": "max_tokens",
+        }
+        result = kb.parse_brain_response(api_resp)
+        assert result["observation"] == "test"
+        assert result["goal"] == "explore"
+
+    def test_parse_repairs_truncated_mid_key(self):
+        """Parser repairs JSON truncated mid-key."""
+        api_resp = {
+            "content": [{"text": '{"observation":"test","goal":"explore","mood":"curious","actions":[],"next_tick_ms":3000,"les'}],
+            "stop_reason": "max_tokens",
+        }
+        result = kb.parse_brain_response(api_resp)
+        assert result["observation"] == "test"
+        assert result["actions"] == []
+
+    def test_parse_repairs_truncated_nested(self):
+        """Parser repairs JSON truncated inside nested array."""
+        api_resp = {
+            "content": [{"text": '{"observation":"test","goal":"go","actions":[{"type":"drive","left":0.3'}],
+            "stop_reason": "max_tokens",
+        }
+        result = kb.parse_brain_response(api_resp)
+        assert result["observation"] == "test"
+        assert result["actions"][0]["type"] == "drive"
 
     def test_parse_preserves_all_fields(self):
         """Parser preserves all mind output fields."""
@@ -2643,6 +2680,256 @@ class TestSessionSummary:
         prompt_text = body["messages"][0]["content"]
         assert "We explored the hallway." in prompt_text
         assert "Lesson:" in prompt_text
+
+
+class TestFormatStructuredSummary:
+    """Tests for _format_structured_summary helper."""
+
+    def test_basic(self):
+        """Concatenates non-empty sections with labels."""
+        result = {
+            "spatial": "Hallway extends 3m north",
+            "narrative": "Explored the hallway.",
+            "tags": ["loc:hallway"],
+        }
+        keys = [("spatial", "Spatial"), ("narrative", "Narrative")]
+        out = kb._format_structured_summary(result, keys)
+        assert "[Spatial] Hallway extends 3m north" in out
+        assert "[Narrative] Explored the hallway." in out
+
+    def test_skips_empty(self):
+        """Omits empty/null sections."""
+        result = {
+            "spatial": "Hallway",
+            "social": "",
+            "lessons": None,
+            "narrative": "Story.",
+        }
+        keys = [
+            ("spatial", "Spatial"), ("social", "Social"),
+            ("lessons", "Lessons"), ("narrative", "Narrative"),
+        ]
+        out = kb._format_structured_summary(result, keys)
+        assert "[Spatial]" in out
+        assert "[Narrative]" in out
+        assert "[Social]" not in out
+        assert "[Lessons]" not in out
+
+    def test_handles_lists(self):
+        """Formats list values with bullet points."""
+        result = {
+            "bookmarks": ["remember the edge", "check back later"],
+            "opacity_events": [{"tick": 5, "text": "felt present"}],
+        }
+        keys = [("bookmarks", "Bookmarks"), ("opacity_events", "Opacity Events")]
+        out = kb._format_structured_summary(result, keys)
+        assert "[Bookmarks]" in out
+        assert "  - remember the edge" in out
+        assert "  - check back later" in out
+        assert "[Opacity Events]" in out
+        assert '"tick"' in out  # dict items serialized as JSON
+
+    def test_empty_result(self):
+        """Returns empty string for all-empty input."""
+        result = {"spatial": "", "social": None}
+        keys = [("spatial", "Spatial"), ("social", "Social")]
+        out = kb._format_structured_summary(result, keys)
+        assert out == ""
+
+    def test_empty_list_skipped(self):
+        """Empty lists are omitted."""
+        result = {"bookmarks": [], "narrative": "Story."}
+        keys = [("bookmarks", "Bookmarks"), ("narrative", "Narrative")]
+        out = kb._format_structured_summary(result, keys)
+        assert "[Bookmarks]" not in out
+        assert "[Narrative] Story." in out
+
+
+class TestCompressStructured:
+    """Tests for structured compress output parsing."""
+
+    def test_compress_structured_response(self, db):
+        """Compression with new structured response creates correct summary."""
+        for i in range(kb.WORKING_MEMORY_SIZE + 5):
+            decision = {"observation": f"obs_{i}", "goal": "test", "mood": "ok",
+                        "actions": [], "tags": [], "outcome": "neutral"}
+            kb.insert_tick_memory(db, str(i + 1), "sess_struct", decision)
+
+        structured = {
+            "spatial": "Hallway extends north 3m",
+            "lessons": "Slow approach works better near edges",
+            "narrative": "Explored the hallway carefully.",
+            "tags": ["loc:hallway", "lesson:edges"],
+        }
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": json.dumps(structured)}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.compress_old_memories(mock_client, "key", db, "sess_struct")
+        )
+
+        row = db.execute("SELECT summary, tags FROM memories WHERE tier='session'").fetchone()
+        assert row is not None
+        assert "[Spatial] Hallway extends north 3m" in row["summary"]
+        assert "[Lessons]" in row["summary"]
+        assert "[Narrative]" in row["summary"]
+        assert "loc:hallway" in row["tags"]
+
+    def test_compress_fallback_to_summary_key(self, db):
+        """Old-format {'summary': '...'} still works via fallback."""
+        for i in range(kb.WORKING_MEMORY_SIZE + 5):
+            decision = {"observation": f"obs_{i}", "goal": "test", "mood": "ok",
+                        "actions": [], "tags": [], "outcome": "neutral"}
+            kb.insert_tick_memory(db, str(i + 1), "sess_old", decision)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": '{"summary": "Old format summary.", "tags": ["loc:test"]}'}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.compress_old_memories(mock_client, "key", db, "sess_old")
+        )
+
+        row = db.execute("SELECT summary FROM memories WHERE tier='session'").fetchone()
+        assert row is not None
+        assert row["summary"] == "Old format summary."
+
+    def test_compress_max_tokens_bumped(self, db):
+        """Compression uses 800 max_tokens."""
+        for i in range(kb.WORKING_MEMORY_SIZE + 3):
+            decision = {"observation": f"obs_{i}", "goal": "test", "mood": "ok",
+                        "actions": [], "tags": [], "outcome": "neutral"}
+            kb.insert_tick_memory(db, str(i + 1), "sess_tok", decision)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": '{"summary": "test", "tags": []}'}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.compress_old_memories(mock_client, "key", db, "sess_tok")
+        )
+
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json", call_args[1].get("json", {}))
+        assert body["max_tokens"] == 800
+
+    def test_compress_includes_qualia(self, db):
+        """Compression prompt includes qualia fields when present."""
+        for i in range(kb.WORKING_MEMORY_SIZE + 3):
+            decision = {
+                "observation": f"obs_{i}", "goal": "test", "mood": "ok",
+                "actions": [], "tags": [], "outcome": "neutral",
+                "qualia": {
+                    "continuity": 0.65,
+                    "opacity": "felt strongly present",
+                    "surprise": "unexpected edge",
+                },
+            }
+            kb.insert_tick_memory(db, str(i + 1), "sess_q", decision)
+
+        # Also set sme_frame_delta on the rows
+        db.execute(
+            "UPDATE memories SET sme_frame_delta = 0.123 WHERE session_id = 'sess_q'"
+        )
+        db.commit()
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": '{"narrative": "test", "tags": []}'}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.compress_old_memories(mock_client, "key", db, "sess_q")
+        )
+
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json", call_args[1].get("json", {}))
+        prompt_text = body["messages"][0]["content"]
+        assert "Continuity:" in prompt_text
+        assert "Opacity:" in prompt_text
+        assert "Surprise:" in prompt_text
+        assert "Frame delta:" in prompt_text
+
+
+class TestSessionSummaryStructured:
+    """Tests for structured session summary output parsing."""
+
+    def test_session_summary_structured(self, db):
+        """Session summary with structured response creates correct longterm entry."""
+        for i in range(5):
+            decision = {"observation": f"obs_{i}", "goal": "test", "mood": "ok",
+                        "thought": f"thought_{i}", "actions": [], "tags": [],
+                        "outcome": "neutral"}
+            kb.insert_tick_memory(db, str(i + 1), "sess_ss", decision)
+
+        structured = {
+            "spatial_map": "Attic workshop, workbench to the north",
+            "lessons": "Edge-following at low speed prevents falls",
+            "arc": "Calm exploration session.",
+            "tags": ["loc:attic"],
+        }
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": json.dumps(structured)}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.generate_session_summary(mock_client, "key", db, "sess_ss")
+        )
+
+        row = db.execute("SELECT summary FROM memories WHERE tier='longterm'").fetchone()
+        assert row is not None
+        assert "[Spatial Map]" in row["summary"]
+        assert "[Lessons]" in row["summary"]
+        assert "[Arc]" in row["summary"]
+
+    def test_session_summary_max_tokens_bumped(self, db):
+        """Session summary uses 1000 max_tokens."""
+        for i in range(5):
+            decision = {"observation": f"obs_{i}", "goal": "test", "mood": "ok",
+                        "actions": [], "tags": [], "outcome": "neutral"}
+            kb.insert_tick_memory(db, str(i + 1), "sess_tok2", decision)
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "content": [{"text": '{"summary": "test", "tags": []}'}]
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+
+        asyncio.get_event_loop().run_until_complete(
+            kb.generate_session_summary(mock_client, "key", db, "sess_tok2")
+        )
+
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json", call_args[1].get("json", {}))
+        assert body["max_tokens"] == 1000
 
 
 # ===========================================================================
@@ -5449,6 +5736,83 @@ class TestSTTInit:
         import inspect
         sig = inspect.signature(kb.call_brain)
         assert "heard" in sig.parameters
+
+
+class TestWhisperSpeechListener:
+    """Tests for the WhisperSpeechListener drain/buffer logic (no hardware)."""
+
+    def _make_listener(self):
+        """Create a WhisperSpeechListener with mocked faster-whisper internals."""
+        with patch("kombucha_bridge.WhisperModel"):
+            listener = kb.WhisperSpeechListener(
+                model_size="tiny",
+                device_index=None,
+                sample_rate=48000,
+            )
+        return listener
+
+    def test_class_exists_and_is_thread(self):
+        """WhisperSpeechListener is a Thread subclass."""
+        assert hasattr(kb, "WhisperSpeechListener")
+        assert issubclass(kb.WhisperSpeechListener, threading.Thread)
+
+    def test_drain_returns_and_clears(self):
+        """drain() returns accumulated items and empties the buffer."""
+        listener = self._make_listener()
+        listener._buffer = [
+            {"time": "12:00:00", "text": "hello"},
+            {"time": "12:00:05", "text": "world"},
+        ]
+        result = listener.drain()
+        assert len(result) == 2
+        assert result[0]["text"] == "hello"
+        assert result[1]["text"] == "world"
+        # Buffer is now empty
+        assert listener.drain() == []
+
+    def test_drain_empty_buffer(self):
+        """drain() returns empty list when nothing has been heard."""
+        listener = self._make_listener()
+        assert listener.drain() == []
+
+    def test_drain_is_atomic(self):
+        """drain() returns a snapshot; modifications don't affect original."""
+        listener = self._make_listener()
+        listener._buffer = [{"time": "12:00:00", "text": "test"}]
+        result = listener.drain()
+        result.append({"time": "12:00:01", "text": "extra"})
+        assert listener.drain() == []
+
+    def test_stop_sets_event(self):
+        """stop() sets the internal stop event."""
+        listener = self._make_listener()
+        assert not listener._stop.is_set()
+        listener.stop()
+        assert listener._stop.is_set()
+
+    def test_same_interface_as_vosk_listener(self):
+        """WhisperSpeechListener has the same public interface as SpeechListener."""
+        for method in ("drain", "stop", "run"):
+            assert hasattr(kb.WhisperSpeechListener, method)
+
+
+class TestWhisperConfig:
+    """Tests for Whisper STT configuration constants."""
+
+    def test_stt_backend_constant_exists(self):
+        """STT_BACKEND constant is defined."""
+        assert hasattr(kb, "STT_BACKEND")
+        assert kb.STT_BACKEND in ("vosk", "whisper")
+
+    def test_whisper_model_size_constant_exists(self):
+        """WHISPER_MODEL_SIZE constant is defined."""
+        assert hasattr(kb, "WHISPER_MODEL_SIZE")
+        assert kb.WHISPER_MODEL_SIZE == "tiny"
+
+    def test_has_whisper_flag_exists(self):
+        """HAS_WHISPER flag is defined on the module."""
+        assert hasattr(kb, "HAS_WHISPER")
+        assert isinstance(kb.HAS_WHISPER, bool)
 
 
 # ---------------------------------------------------------------------------

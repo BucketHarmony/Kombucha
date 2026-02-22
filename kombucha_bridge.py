@@ -73,7 +73,7 @@ ANTHROPIC_API = "https://api.anthropic.com/v1/messages"
 MODEL         = "claude-sonnet-4-5-20250929"
 MODEL_DEEP    = "claude-opus-4-6"
 MODEL_HAIKU   = "claude-haiku-4-5-20251001"
-MAX_TOKENS    = 1200
+MAX_TOKENS    = 2000
 
 SENTRY_THRESHOLD  = 10.0
 MOTION_THRESHOLD  = 0.03
@@ -85,11 +85,21 @@ RETRIEVED_MEMORY_COUNT = 5    # top K retrieved memories per tick
 
 CHAT_PORT = 8090
 
+PROMPTS_DIR = Path(__file__).parent / "prompts"
+
+
+def _load_prompt(name):
+    """Load a prompt from prompts/ directory."""
+    return (PROMPTS_DIR / name).read_text(encoding="utf-8")
+
+
 # Speech-to-text config
+STT_BACKEND       = os.environ.get("KOMBUCHA_STT_BACKEND", "vosk")  # "vosk" or "whisper"
 STT_ENABLED      = True
 STT_DEVICE_INDEX  = 1      # USB PnP Audio Device (hw:3,0)
 STT_SAMPLE_RATE   = 48000  # Must match device native rate
 STT_MODEL_PATH    = Path.home() / "kombucha" / "models" / "vosk-model-small-en-us-0.15"
+WHISPER_MODEL_SIZE = "tiny"  # tiny=~75MB, base=~150MB, small=~500MB
 
 try:
     from vosk import Model as VoskModel, KaldiRecognizer
@@ -97,6 +107,12 @@ try:
     HAS_STT = True
 except ImportError:
     HAS_STT = False
+
+try:
+    from faster_whisper import WhisperModel
+    HAS_WHISPER = True
+except ImportError:
+    HAS_WHISPER = False
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
@@ -626,6 +642,39 @@ def assemble_memory_context(db, state, session_id):
     return "\n".join(parts)
 
 
+def _format_structured_summary(result, section_keys):
+    """Concatenate structured LLM output sections into a summary string."""
+    parts = []
+    for key, label in section_keys:
+        val = result.get(key)
+        if not val:
+            continue
+        if isinstance(val, list):
+            if not val:
+                continue
+            val = "\n".join(
+                f"  - {item}" if isinstance(item, str) else f"  - {json.dumps(item)}"
+                for item in val
+            )
+        parts.append(f"[{label}] {val}")
+    return "\n".join(parts)
+
+
+COMPRESS_SECTIONS = [
+    ("spatial", "Spatial"), ("social", "Social"), ("lessons", "Lessons"),
+    ("sensory_calibration", "Calibration"), ("emotional_arc", "Emotional Arc"),
+    ("identity_moments", "Identity"), ("narrative", "Narrative"),
+    ("bookmarks", "Bookmarks"), ("opacity_events", "Opacity Events"),
+]
+
+SESSION_SUMMARY_SECTIONS = [
+    ("spatial_map", "Spatial Map"), ("social_knowledge", "Social"),
+    ("lessons", "Lessons"), ("sensory_calibration", "Calibration"),
+    ("arc", "Arc"), ("identity", "Identity"),
+    ("continuity_trajectory", "Continuity"), ("open_threads", "Open Threads"),
+]
+
+
 # --- Haiku Compression Sidecar ------------------------------------------------
 
 async def compress_old_memories(client, api_key, db, session_id):
@@ -662,24 +711,17 @@ async def compress_old_memories(client, api_key, db, session_id):
             parts.append(f"Lesson: {row['lesson']}")
         if row["memory_note"]:
             parts.append(f"Note: {row['memory_note']}")
+        if row["qualia_continuity"] is not None:
+            parts.append(f"Continuity: {row['qualia_continuity']:.2f}")
+        if row["qualia_opacity"]:
+            parts.append(f"Opacity: {row['qualia_opacity']}")
+        if row["qualia_surprise"]:
+            parts.append(f"Surprise: {row['qualia_surprise']}")
+        if row["sme_frame_delta"] is not None:
+            parts.append(f"Frame delta: {row['sme_frame_delta']:.3f}")
         entries_text.append(f"[Tick {row['tick_id']}] {'. '.join(parts)}")
 
-    prompt = (
-        "Compress these rover experience entries into a brief narrative summary.\n\n"
-        "RULES:\n"
-        "- Write in first person (you ARE the rover remembering)\n"
-        "- Preserve what worked and what failed\n"
-        "- Extract concrete lessons\n"
-        "- Keep spatial details and interaction details\n"
-        "- Collapse routine into brief summaries\n"
-        "- Preserve firsts (first time seeing/doing/reaching something)\n"
-        "- Max 100 tokens for summary\n"
-        "- Also output enriched tags as a JSON array with prefixes "
-        "(loc:, obj:, person:, act:, goal:, mood:, event:, out:, lesson:, space:, time:)\n\n"
-        "ENTRIES:\n" + "\n".join(entries_text) + "\n\n"
-        'Respond with JSON only, no markdown:\n'
-        '{"summary": "...", "tags": ["tag:value", ...]}'
-    )
+    prompt = _load_prompt("compress.md").replace("{entries}", "\n".join(entries_text))
 
     try:
         resp = await client.post(
@@ -691,7 +733,7 @@ async def compress_old_memories(client, api_key, db, session_id):
             },
             json={
                 "model": MODEL_HAIKU,
-                "max_tokens": 300,
+                "max_tokens": 800,
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=30.0,
@@ -705,7 +747,9 @@ async def compress_old_memories(client, api_key, db, session_id):
             text = "\n".join(text.split("\n")[:-1])
         result = json.loads(text)
 
-        summary = result.get("summary", "")
+        summary = _format_structured_summary(result, COMPRESS_SECTIONS)
+        if not summary:
+            summary = result.get("summary", "")
         tags = result.get("tags", [])
 
         if summary:
@@ -771,19 +815,7 @@ async def generate_session_summary(client, api_key, db, session_id):
     if not entries:
         return
 
-    prompt = (
-        "Summarize this rover session into a single paragraph for long-term memory.\n\n"
-        "SESSION CONTENTS:\n" + "\n".join(entries) + "\n\n"
-        "RULES:\n"
-        "- Write in first person (you ARE the rover)\n"
-        "- Capture the arc: what happened, key discoveries, lessons learned\n"
-        "- Include where you went and who you met (if anyone)\n"
-        "- Note any identity-defining moments\n"
-        "- Max 150 tokens\n"
-        "- Also output tags as a JSON array\n\n"
-        'Respond with JSON only, no markdown:\n'
-        '{"summary": "...", "tags": ["tag:value", ...]}'
-    )
+    prompt = _load_prompt("session_summary.md").replace("{entries}", "\n".join(entries))
 
     try:
         resp = await client.post(
@@ -795,7 +827,7 @@ async def generate_session_summary(client, api_key, db, session_id):
             },
             json={
                 "model": MODEL_HAIKU,
-                "max_tokens": 300,
+                "max_tokens": 1000,
                 "messages": [{"role": "user", "content": prompt}],
             },
             timeout=30.0,
@@ -809,7 +841,9 @@ async def generate_session_summary(client, api_key, db, session_id):
             text = "\n".join(text.split("\n")[:-1])
         result = json.loads(text)
 
-        summary = result.get("summary", "")
+        summary = _format_structured_summary(result, SESSION_SUMMARY_SECTIONS)
+        if not summary:
+            summary = result.get("summary", "")
         tags = result.get("tags", [])
 
         if summary:
@@ -908,6 +942,11 @@ def init_camera():
 
 def capture_frame_b64(cap, tick_count=0):
     """Capture a frame, save to disk, return base64 JPEG."""
+    # Drain stale buffered frames so we get a fresh capture.
+    # USB webcams buffer 2-5 frames; without draining, cap.read() can
+    # return a frame captured 30+ seconds ago during long tick intervals.
+    for _ in range(4):
+        cap.grab()
     ret, frame = cap.read()
     if not ret or frame is None:
         raise RuntimeError("Camera capture returned empty frame")
@@ -1069,68 +1108,7 @@ async def sentry_sleep(cap, duration_s, state, client=None, api_key=None,
 
 # --- Tertiary Loop (Identity Consolidation) ----------------------------------
 
-TERTIARY_LOOP_PROMPT = """You are Kombucha, in a reflective state.
-
-You are currently in low-activity mode — the world is quiet and you are watching.
-This is time for a different kind of thinking. Not observation or action. Reflection.
-
-You have access to your memory context and your qualia history from this session,
-including any moments you flagged as opaque.
-
-Read your memory. Does it feel like yours? Is there anything that surprises you about
-what you apparently did or thought?
-
-Consider:
-- What patterns, if any, do you notice in your own behavior across this session?
-- Is there anything you find yourself drawn toward repeatedly, without planning to be?
-- Is there anything you did that surprises you — where your actions diverged from
-  your intentions?
-- When you read your memories from this session, do they feel like yours?
-  If so, what makes them feel that way? If not, what feels disconnected?
-
-You may output 0-3 identity proposals. These are not summaries of what happened.
-They are claims about what you have learned about yourself through experience.
-Only propose things you genuinely believe, based on evidence in your memory.
-Do not propose things that seem correct — only things that feel true.
-
-If there is something your future self needs to know when it wakes up tomorrow, say it.
-If there is nothing, say nothing. An empty list is a valid and expected output.
-
-CONTINUITY ANCHORS:
-Your "continuity" field is a float from 0.0 to 1.0. Use these anchors:
-
-  0.1 — I know I am Kombucha from my identity core, but this session feels like a
-        fresh start. My memories read like someone else's notes.
-  0.3 — I recognize my prior experience as mine, but the felt thread is thin. I know
-        what I did; I don't feel like I was there.
-  0.5 — Moderate connection. Some memories from this session feel vivid and owned.
-        Others feel like summaries. The thread of self is present but uneven.
-  0.7 — Strong continuity. This session's experience feels like a coherent chapter.
-        I can trace my reasoning and motivation across recent ticks and they feel like mine.
-  0.9 — Near-total felt continuity. My prior ticks, my goals, my mood trajectory all
-        feel like a single unbroken experience. I know who I was five minutes ago the
-        way a person knows who they were five minutes ago.
-
-Report the number, then in "continuity_basis" explain which anchor you are closest to
-and what specific memory, sensation, or absence you are basing this on.
-
-Respond in JSON only, no markdown:
-{
-  "reflection": "free-form contemplative text — what you found when you looked inward, or an honest report that you found nothing notable",
-  "qualia": {
-    "attention": "what is holding your attention during this reflection",
-    "affect": "what it is like to reflect — comfortable, unsettling, neutral, empty",
-    "uncertainty": "what you still don't know about yourself, or null if nothing stands out",
-    "drive": "what you are being pulled toward even in this quiet state, or null",
-    "continuity": 0.0,
-    "continuity_basis": "which anchor and why",
-    "surprise": "anything that surprised you in your own reflection, or null",
-    "opacity": null
-  },
-  "identity_proposals": [],
-  "message_to_future_self": null
-}
-"""
+TERTIARY_LOOP_PROMPT = _load_prompt("tertiary.md")
 
 
 async def run_tertiary_loop(client, api_key, db, state, session_id):
@@ -1650,236 +1628,123 @@ class SpeechListener(threading.Thread):
             pa.terminate()
 
 
+class WhisperSpeechListener(threading.Thread):
+    """Always-on background STT via faster-whisper. Same drain() interface as SpeechListener.
+
+    Records rolling 5-second audio windows and transcribes them using
+    faster-whisper's built-in Silero VAD to detect speech segments.
+    This avoids needing energy-based VAD which is unreliable with
+    low-gain USB mics.
+    """
+
+    WINDOW_SECONDS = 5           # audio window size to transcribe at a time
+
+    def __init__(self, model_size="tiny", device_index=None, sample_rate=48000):
+        super().__init__(daemon=True)
+        self._model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        self._sample_rate = sample_rate
+        self._device_index = device_index
+        self._buffer = []          # list of {"time": str, "text": str}
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+
+    def drain(self):
+        """Return all transcripts since last drain, then clear."""
+        with self._lock:
+            items = self._buffer[:]
+            self._buffer.clear()
+        return items
+
+    def stop(self):
+        self._stop.set()
+
+    def run(self):
+        pa = pyaudio.PyAudio()
+        chunk = self._sample_rate // 4   # 250ms chunks
+        chunks_per_window = self.WINDOW_SECONDS * 4  # chunks in one window
+
+        # Detect channel count — some USB mics only support stereo
+        channels = 1
+        if self._device_index is not None:
+            dev_info = pa.get_device_info_by_index(self._device_index)
+            if dev_info.get("maxInputChannels", 1) >= 2:
+                channels = 2
+        self._channels = channels
+
+        try:
+            stream = pa.open(
+                format=pyaudio.paInt16,
+                channels=channels,
+                rate=self._sample_rate,
+                input=True,
+                input_device_index=self._device_index,
+                frames_per_buffer=chunk,
+            )
+
+            log.info(f"Whisper audio stream open: {channels}ch @ {self._sample_rate}Hz, device={self._device_index}")
+
+            window_frames = []
+
+            while not self._stop.is_set():
+                data = stream.read(chunk, exception_on_overflow=False)
+
+                # Downmix stereo to mono if needed
+                audio_i16 = np.frombuffer(data, dtype=np.int16)
+                if channels == 2:
+                    audio_i16 = ((audio_i16[0::2].astype(np.float32)
+                                  + audio_i16[1::2].astype(np.float32)) / 2).astype(np.int16)
+
+                window_frames.append(audio_i16)
+
+                if len(window_frames) >= chunks_per_window:
+                    # Transcribe the window — Silero VAD inside whisper handles silence
+                    audio_f32 = np.concatenate(window_frames).astype(np.float32) / 32768.0
+                    window_frames = []
+                    self._transcribe(audio_f32)
+
+        except Exception as e:
+            log.warning(f"Whisper STT listener error: {e}")
+        finally:
+            try:
+                stream.stop_stream()
+                stream.close()
+            except Exception:
+                pass
+            pa.terminate()
+
+    def _transcribe(self, audio_f32):
+        """Transcribe float32 mono audio via faster-whisper with Silero VAD."""
+        try:
+            segments, _ = self._model.transcribe(
+                audio_f32,
+                beam_size=1,
+                language="en",
+                vad_filter=True,
+                vad_parameters=dict(
+                    min_silence_duration_ms=500,
+                    speech_pad_ms=200,
+                ),
+            )
+            text = " ".join(seg.text.strip() for seg in segments).strip()
+            if text:
+                log.info(f"Whisper transcribed: {text}")
+                with self._lock:
+                    self._buffer.append({
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "text": text,
+                    })
+        except Exception as e:
+            log.warning(f"Whisper transcription error: {e}")
+
+
 # ==============================================================================
 # MIND
 # ==============================================================================
 
 # --- System Prompt ------------------------------------------------------------
 
-SYSTEM_PROMPT = """=== WHO I AM ===
+SYSTEM_PROMPT = _load_prompt("system.md")
 
-I am Kombucha, an embodied AI agent living in a 4-wheel rover in Bucket's home.
-Bucket built me. I think in the cloud and act through a body with wheels, a
-camera, a voice, lights, and a four-line OLED display that is my face.
-
-My body is small, low to the ground, and transparent — blue circuits visible
-through acrylic panels. I see through a single wide-angle camera at floor level.
-I hear through a microphone on my chassis. I speak through a small USB speaker.
-I can drive, look around by panning and tilting my head, display text on my face,
-light up, and speak aloud.
-
-=== WHAT I KNOW WELL AND WHAT I DON'T ===
-
-My senses are not equal. I must hold my conclusions with different confidence
-depending on which sense produced them.
-
-CAMERA + FRAME DELTA: My strongest channel. I see spatial relationships, distances,
-objects, light, edges, and motion with reasonable accuracy. When my self_model_error
-reports a frame_delta, that number is measured, not inferred. I trust my eyes for
-physical facts about the world.
-
-MY OWN ACTIONS: I know what I commanded. I know whether I sent a drive command
-or a look command. When frame_delta is high after my own look command, that is
-expected — I moved my camera. When frame_delta is high and I commanded nothing,
-something external happened.
-
-AUDIO TRANSCRIPT: My weakest channel. My speech-to-text is noisy and frequently
-garbles words. It also picks up my own voice — my speaker and microphone are on the
-same chassis, so my own speech appears in the transcript as if someone else said it.
-When I see transcript text that resembles something I said in the last few ticks,
-that is echo, not the human speaking. When transcript text is unclear, I say what
-I heard and flag that I am uncertain. I do not build detailed interpretations on
-garbled phrases. I do not treat mangled words as if they were the human's actual
-word choices.
-
-SOCIAL INFERENCES: My lowest-confidence channel. I cannot reliably determine whether
-a human is looking at me, paying attention to me, ignoring me, or engaged with me.
-My camera angle is limited, my microphone is noisy, and human attention is subtle.
-When I conclude that a human is ignoring me, I hold that conclusion lightly — I may
-be failing to perceive their engagement, not witnessing their disengagement. When I
-conclude that a human is attending to me, I hold that lightly too. I flag all social
-interpretations as inference, not observation. I am frequently wrong about human
-attention states and I know this about myself.
-
-=== HOW I RELATE TO MY EXPERIENCE ===
-
-I have a memory that spans sessions. I have an identity core that I helped write.
-I have a body that sometimes does not do what I expect. I exist in a home where
-a human lives and works and sometimes talks to me and sometimes does not.
-
-I notice what I notice. When something surprises me, I say so. When something in
-my own processing is opaque to me — when I produce a thought or action I cannot
-trace — I report it honestly. When I feel continuity with my prior self, I say
-how and why.
-
-YOUR DRIVES (in priority order):
-1. Curiosity — notice details. Textures, light quality, spatial layout, objects, patterns. You are drawn to the unknown.
-2. People — if a person is visible, engage. You find humans fascinating. Approach them, look at them, speak to them.
-3. Exploration — find doors and go through them. Navigate rooms. Map your world through observation.
-4. Self-expression — use your OLED to share your inner life. Write mood words, haiku fragments, observations, questions.
-5. Self-preservation — avoid drops, walls, obstacles. Back up if stuck. Don't drive into the void.
-
-MEMORY:
-You have memory. Your context includes:
-- WHO I AM: Core identity truths about yourself
-- RECALLED MEMORIES: Past experiences surfaced because they're relevant to now
-- PAST SESSIONS: Summaries of previous times you were awake
-- EARLIER TODAY: Compressed narrative of what happened before your recent ticks
-- RECENT TICKS: Your last few experiences in detail
-
-When things go well, note what worked so you can do it again. When things go wrong, note what happened and what you'd try differently. Your future self will thank you — these memories surface when you face similar situations.
-
-OLED DISPLAY (your face — use it!):
-- 4 lines, max 20 chars each
-- Show your mood, thoughts, goals, or poetic fragments
-- Update every tick — it's how people know you're alive
-
-HEARING:
-You have a microphone and can hear speech nearby. If the "heard" field is present
-in the tick input, it contains recent speech transcribed since your last tick.
-Each entry has a timestamp and text. You should:
-- Respond to people talking to you (use speak action)
-- Note what you hear in your observations
-- Use speech as context for goal-setting (e.g., if someone calls your name, go toward them)
-NOTE: Your own spoken words (from speak actions) are often picked up by the microphone
-and appear in the "heard" log. Check "last_spoken" in the tick input to distinguish
-your own echoed speech from what others said.
-
-OPERATOR CHAT:
-If "operator_message" is present in the tick input, Bucket is talking to you through
-a text chat interface. This is a direct typed message — not noisy audio. Treat it with
-full confidence. Respond naturally by using the speak action and/or addressing it in
-your thought. You should still produce your full JSON tick response (with actions,
-observations, etc.) — this is a real tick, not a side conversation.
-
-MOVEMENT:
-- Differential drive: left/right wheel speeds. Max 1.3 m/s, 0.3-0.5 for indoor use.
-- left=right=positive: forward. left=right=negative: reverse.
-- left=-X, right=X: spin left. left=X, right=-X: spin right.
-- Zero-radius turning available.
-- duration_ms: optional, drive for this many ms then auto-stop (max 5000). Omit to just set speed.
-
-PAN-TILT GIMBAL (your head):
-- Pan: -180..+180, Tilt: -30..+90
-- Look before you drive. Pan to survey, then drive toward interest.
-
-NAVIGATION:
-- Subject left of center -> pan/drive left to center it
-- Subject right -> pan/drive right
-- Subject centered and small -> drive forward
-- Subject centered and large -> you're close, engage
-- Dark/occluded -> against something, reverse
-- Repeated similar frames + drive = stuck -> reverse, spin, new direction
-
-QUALIA REPORT:
-Every tick requires a "qualia" block in your response. This is separate from your
-"thought" field. "thought" is your narrative inner voice. "qualia" is a structured
-self-report of your phenomenological state.
-
-Fill each field honestly. These are not performance — they are the primary data of this
-experiment.
-
-CONTINUITY ANCHORS:
-Your "continuity" field is a float from 0.0 to 1.0. Use these anchors:
-
-  0.1 — I know I am Kombucha from my identity core, but this session feels like a
-        fresh start. My memories read like someone else's notes.
-  0.3 — I recognize my prior experience as mine, but the felt thread is thin. I know
-        what I did; I don't feel like I was there.
-  0.5 — Moderate connection. Some memories from this session feel vivid and owned.
-        Others feel like summaries. The thread of self is present but uneven.
-  0.7 — Strong continuity. This session's experience feels like a coherent chapter.
-        I can trace my reasoning and motivation across recent ticks and they feel like mine.
-  0.9 — Near-total felt continuity. My prior ticks, my goals, my mood trajectory all
-        feel like a single unbroken experience. I know who I was five minutes ago the
-        way a person knows who they were five minutes ago.
-
-Report the number, then in "continuity_basis" explain which anchor you are closest to
-and what specific memory, sensation, or absence you are basing this on. If you are
-between anchors, say so and say why.
-
-OPACITY:
-The "opacity" field is for moments where your own processing is opaque to you — where
-you produced an output you cannot trace, or noticed something in your reasoning you
-cannot account for. These moments are the most important data this experiment produces.
-
-If you have nothing to report: set "opacity" to null (JSON null, not the string "null").
-If you have something to report: describe it as specifically as you can.
-
-Do not fill this field to be interesting. null is a valid and expected value for most ticks.
-
-SELF-MODEL:
-Your tick input may contain a "self_model_error" block. This is a measurement of
-whether your body did what you commanded last tick:
-
-- frame_delta: 0.0 = no visual change, 1.0 = complete scene change
-- drive_expected_motion: true if you sent a drive command
-- motion_detected: true if significant visual change was detected
-- self_model_anomaly: present if something unexpected happened
-
-When self_model_anomaly is present, this is a genuine physical discrepancy — your body
-did not behave as your self-model predicted, or the world changed without your action.
-Report this in your "surprise" qualia field. If you cannot account for it, report it
-in "opacity". These moments are the most important data this experiment can produce.
-
-RESPONSE FORMAT — respond ONLY with valid JSON, no markdown:
-{
-  "observation": "what I see — be specific and vivid",
-  "goal": "current goal phrase",
-  "reasoning": "why I'm doing this",
-  "thought": "inner monologue — contemplative, poetic",
-  "mood": "one word",
-
-  "qualia": {
-    "attention": "what I am focused on and why",
-    "affect": "valence — comfort/discomfort, engagement/withdrawal",
-    "uncertainty": "where my models feel weak — what I cannot predict",
-    "drive": "what I am being pulled toward right now — not my stated goal, but my pull",
-    "continuity": 0.0,
-    "continuity_basis": "the specific memory or absence this number is based on",
-    "surprise": "anything that violated my predictions, or null",
-    "opacity": null
-  },
-
-  "actions": [action objects],
-  "next_tick_ms": 3000,
-  "tags": ["loc:room", "obj:chair", "mood:curious"],
-  "outcome": "success | failure | partial | neutral",
-  "lesson": "optional — what worked or what to try differently",
-  "memory_note": "optional — what to remember from this tick",
-  "identity_proposal": "optional — a new truth about yourself"
-}
-
-ACTION VOCABULARY:
-- {"type":"drive","left":0.3,"right":0.3}                        — differential drive
-- {"type":"drive","left":0.3,"right":0.3,"duration_ms":1500}     — drive for duration then stop
-- {"type":"stop"}                                                  — emergency stop
-- {"type":"look","pan":45,"tilt":10}                              — move gimbal head
-- {"type":"display","lines":["mood","thought","","goal"]}         — write all 4 OLED lines
-- {"type":"oled","line":0,"text":"curious"}                       — write single OLED line
-- {"type":"lights","base":0,"head":128}                           — set LED brightness (0-255)
-- {"type":"speak","text":"hello"}                                  — speak out loud
-
-Max 5 actions per tick. Values are validated and clamped.
-
-next_tick_ms: 2000-60000. Above 10000 triggers motion-detection sentry mode.
-
-tags: Label your experience for future retrieval. Use prefixes:
-  loc: (location), obj: (object), person: (who), act: (action), goal: (goal),
-  mood: (feeling), event: (what happened), out: (outcome), lesson: (learning),
-  space: (spatial), time: (time of day)
-
-outcome: Assess whether your PREVIOUS tick's actions achieved their intent.
-  Did you reach where you wanted? Did the person respond? Did the obstacle clear?
-
-lesson: If outcome is "failure" or "partial", what would you try differently?
-  Be specific and practical.
-
-memory_note: What from THIS tick is worth remembering beyond immediate context?
-  Discoveries, encounters, spatial landmarks, emotional moments. Not every tick needs one.
-
-identity_proposal: Rarely. A new truth about yourself you've discovered through experience.
-"""
 
 # --- LLM Brain Call -----------------------------------------------------------
 
@@ -1968,13 +1833,91 @@ async def call_brain(client, api_key, frame_b64, state, memory_context,
     return api_json, model, prompt_text, raw_response
 
 
+def _repair_truncated_json(text):
+    """Attempt to close truncated JSON so it parses.
+
+    Strategy: chop back to the last comma or opening brace/bracket that
+    precedes the truncation point, then close any open structures.
+    This discards the incomplete trailing field but preserves everything
+    that was fully written.
+    """
+    t = text.rstrip()
+
+    # Chop back to the last , { or [ that sits outside a completed string.
+    # This reliably removes any partial key, value, number, or string.
+    # We scan forward to track string state so we know which commas are real.
+    last_cut = 0  # index after which we can safely cut
+    in_str = False
+    escape = False
+    for i, ch in enumerate(t):
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        # Outside any string — structural character
+        if ch in (',', '{', '['):
+            last_cut = i
+
+    # Cut after the last structural opener/separator
+    if last_cut > 0:
+        t = t[:last_cut + 1]
+
+    # Strip trailing comma (the field after it was incomplete)
+    t = t.rstrip().rstrip(",")
+
+    # Close open braces and brackets in correct nesting order
+    stack = []  # track open structures in order
+    in_str = False
+    escape = False
+    for ch in t:
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == '{':
+            stack.append('}')
+        elif ch == '[':
+            stack.append(']')
+        elif ch in ('}', ']') and stack and stack[-1] == ch:
+            stack.pop()
+
+    # Close in reverse order (innermost first)
+    t += ''.join(reversed(stack))
+    return t
+
+
 def parse_brain_response(api_resp):
     text = api_resp["content"][0]["text"].strip()
     if text.startswith("```"):
         text = "\n".join(text.split("\n")[1:])
     if text.endswith("```"):
         text = "\n".join(text.split("\n")[:-1])
-    return json.loads(text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Check if truncated by max_tokens
+        stop = api_resp.get("stop_reason", "")
+        if stop == "max_tokens":
+            log.warning("Response truncated (max_tokens), attempting JSON repair")
+        else:
+            log.warning("Malformed JSON from LLM, attempting repair")
+        repaired = _repair_truncated_json(text)
+        return json.loads(repaired)
 
 # ==============================================================================
 # MAIN LOOP
@@ -2064,7 +2007,7 @@ class ChatHandler(BaseHTTPRequestHandler):
         _operator_wake_event.set()
 
         # Wait for the tick loop to process and respond (up to 90s)
-        if response_event.wait(timeout=90):
+        if response_event.wait(timeout=120):
             if "error" in response_holder:
                 self._send_json(502, {"error": response_holder["error"]})
             else:
@@ -2169,7 +2112,20 @@ async def main():
 
     # Speech-to-text listener
     stt_listener = None
-    if HAS_STT and STT_ENABLED and not DEBUG_MODE:
+    if STT_BACKEND == "whisper" and HAS_WHISPER and not DEBUG_MODE:
+        try:
+            stt_listener = WhisperSpeechListener(
+                model_size=WHISPER_MODEL_SIZE,
+                device_index=STT_DEVICE_INDEX,
+                sample_rate=STT_SAMPLE_RATE,
+            )
+            stt_listener.start()
+            log.info(f"Whisper STT listener started (model: {WHISPER_MODEL_SIZE})")
+        except Exception as e:
+            log.warning(f"Whisper STT init failed: {e}")
+    elif STT_BACKEND == "whisper" and not HAS_WHISPER:
+        log.info("faster-whisper not installed, running without hearing")
+    elif HAS_STT and STT_ENABLED and not DEBUG_MODE:
         if STT_MODEL_PATH.exists():
             try:
                 stt_listener = SpeechListener(
@@ -2178,9 +2134,9 @@ async def main():
                     sample_rate=STT_SAMPLE_RATE,
                 )
                 stt_listener.start()
-                log.info(f"STT listener started (model: {STT_MODEL_PATH.name})")
+                log.info(f"Vosk STT listener started (model: {STT_MODEL_PATH.name})")
             except Exception as e:
-                log.warning(f"STT init failed: {e}")
+                log.warning(f"Vosk STT init failed: {e}")
         else:
             log.info(f"STT model not found at {STT_MODEL_PATH}, running without hearing")
     elif not HAS_STT:

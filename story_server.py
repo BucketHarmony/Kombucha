@@ -41,7 +41,7 @@ LOCAL_STATE = LOCAL_DIR / "data" / "state.json"
 SYNC_INTERVAL = 8  # seconds between syncs
 
 PI_CHAT_URL = "http://kombucha.local:8090/api/chat"
-CHAT_TIMEOUT = 60
+CHAT_TIMEOUT = 120
 
 # ---------------------------------------------------------------------------
 # JSONL Journal Parser
@@ -179,11 +179,11 @@ def parse_logs(text):
 # ---------------------------------------------------------------------------
 
 def find_frame(tick_num, frames_dir):
-    """Find the JPEG frame for a given tick number."""
+    """Find the JPEG frame for a given tick number (latest if duplicates)."""
     pattern = f"tick_{tick_num:05d}_*.jpg"
-    matches = list(frames_dir.glob(pattern))
+    matches = sorted(frames_dir.glob(pattern))
     if matches:
-        return matches[0].name
+        return matches[-1].name  # latest timestamp
     return None
 
 
