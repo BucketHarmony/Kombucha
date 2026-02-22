@@ -5456,7 +5456,7 @@ class TestSTTInit:
 # ---------------------------------------------------------------------------
 
 class TestChatHandler:
-    """Tests for the ChatHandler HTTP server on the bridge."""
+    """Tests for the ChatHandler + operator message queue."""
 
     def _make_handler(self):
         """Create a ChatHandler instance without binding a socket."""
@@ -5468,13 +5468,8 @@ class TestChatHandler:
         handler.request_version = "HTTP/1.1"
         handler.command = "POST"
         handler.client_address = ("127.0.0.1", 12345)
-        # Capture response
         handler._response_code = None
         handler._response_headers = {}
-        handler._response_body = b""
-        original_send_response = kb.BaseHTTPRequestHandler.send_response
-        original_send_header = kb.BaseHTTPRequestHandler.send_header
-        original_end_headers = kb.BaseHTTPRequestHandler.end_headers
 
         def mock_send_response(self, code, message=None):
             self._response_code = code
@@ -5500,6 +5495,9 @@ class TestChatHandler:
 
     def test_reject_empty_message(self):
         """POST /api/chat with empty message returns 400."""
+        # Drain any leftover messages from previous tests
+        while not kb._operator_queue.empty():
+            kb._operator_queue.get_nowait()
         handler = self._make_handler()
         handler.path = "/api/chat"
         body = json.dumps({"message": ""}).encode("utf-8")
@@ -5516,109 +5514,74 @@ class TestChatHandler:
         handler._handle_chat_request()
         assert handler._response_code == 413
 
-    def test_prompt_includes_memory_and_user_message(self, db):
-        """Chat prompt includes memory context and user message."""
-        # Setup ChatHandler class state
-        kb.ChatHandler.db = db
-        kb.ChatHandler.state = {
-            "tick_count": 5,
-            "goal": "explore",
-            "mood": "curious",
-            "session_id": "test123",
-        }
-        kb.ChatHandler.api_key = "test-key"
-        kb.ChatHandler.session_id = "test123"
-        kb.ChatHandler.last_frame_b64 = "dGVzdA=="  # base64 "test"
+    def test_message_queued_and_wake_event_set(self):
+        """Valid message is put into _operator_queue and wake event is set."""
+        # Drain queue
+        while not kb._operator_queue.empty():
+            kb._operator_queue.get_nowait()
+        kb._operator_wake_event.clear()
 
-        # Mock httpx.Client to capture the API call
+        handler = self._make_handler()
+        handler.path = "/api/chat"
+        body = json.dumps({"message": "hello Kombucha"}).encode("utf-8")
+        handler.headers = {"Content-Length": str(len(body))}
+        handler.rfile.read = MagicMock(return_value=body)
+
+        # Run in a thread since _handle_chat_request blocks on response_event
+        import threading
+        t = threading.Thread(target=handler._handle_chat_request)
+        t.start()
+
+        # Give it a moment to queue the message
+        import time; time.sleep(0.1)
+
+        # Wake event should be set
+        assert kb._operator_wake_event.is_set()
+
+        # Queue should have the message
+        assert not kb._operator_queue.empty()
+        msg, evt, holder = kb._operator_queue.get_nowait()
+        assert msg == "hello Kombucha"
+
+        # Signal a response so the thread can finish
+        holder["reply"] = "test reply"
+        evt.set()
+        t.join(timeout=2)
+
+    def test_call_brain_accepts_operator_message(self):
+        """call_brain signature accepts operator_message keyword argument."""
+        import inspect
+        sig = inspect.signature(kb.call_brain)
+        assert "operator_message" in sig.parameters
+
+    def test_operator_message_in_tick_input(self):
+        """operator_message is injected into tick_input when provided."""
         captured = {}
 
-        class FakeResponse:
-            def raise_for_status(self):
-                pass
+        class FakeResp:
+            def raise_for_status(self): pass
             def json(self):
-                return {"content": [{"text": "Hello there!"}]}
+                return {"content": [{"text": '{"observation":"test","goal":"test","reasoning":"test","thought":"hi","mood":"ok","actions":[],"next_tick_ms":3000,"tags":[],"outcome":"neutral"}'}]}
 
         class FakeClient:
-            def __enter__(self):
-                return self
-            def __exit__(self, *a):
-                pass
-            def post(self, url, **kwargs):
+            async def post(self, url, **kwargs):
                 captured["json"] = kwargs.get("json", {})
-                return FakeResponse()
+                return FakeResp()
 
-        with patch.object(kb.httpx, "Client", return_value=FakeClient()):
-            handler = self._make_handler()
-            handler.path = "/api/chat"
-            body = json.dumps({"message": "What do you see?"}).encode("utf-8")
-            handler.headers = {"Content-Length": str(len(body))}
-            handler.rfile.read = MagicMock(return_value=body)
-            handler._handle_chat_request()
+        state = {"tick_count": 1, "goal": "idle", "pan_position": 0,
+                 "tilt_position": 0}
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(kb.call_brain(
+                FakeClient(), "key", "abc123", state, "",
+                operator_message="What do you see?"
+            ))
+        finally:
+            loop.close()
 
-        assert handler._response_code == 200
-        # Check that the prompt was constructed correctly
-        api_json = captured["json"]
-        messages = api_json["messages"]
-        assert len(messages) == 1
-        user_content = messages[0]["content"]
-        # Should have image block + text block
-        assert len(user_content) == 2
-        assert user_content[0]["type"] == "image"
-        text = user_content[1]["text"]
-        assert "OPERATOR MESSAGE" in text
+        text = captured["json"]["messages"][0]["content"][1]["text"]
+        assert "operator_message" in text
         assert "What do you see?" in text
-        # System prompt should include chat suffix
-        assert "CHAT MODE" in api_json["system"]
-
-    def test_prompt_omits_frame_when_none(self, db):
-        """Chat prompt has no image block when last_frame_b64 is None."""
-        kb.ChatHandler.db = db
-        kb.ChatHandler.state = {
-            "tick_count": 1,
-            "goal": "idle",
-            "mood": "neutral",
-            "session_id": "test123",
-        }
-        kb.ChatHandler.api_key = "test-key"
-        kb.ChatHandler.session_id = "test123"
-        kb.ChatHandler.last_frame_b64 = None
-
-        captured = {}
-
-        class FakeResponse:
-            def raise_for_status(self):
-                pass
-            def json(self):
-                return {"content": [{"text": "Hi!"}]}
-
-        class FakeClient:
-            def __enter__(self):
-                return self
-            def __exit__(self, *a):
-                pass
-            def post(self, url, **kwargs):
-                captured["json"] = kwargs.get("json", {})
-                return FakeResponse()
-
-        with patch.object(kb.httpx, "Client", return_value=FakeClient()):
-            handler = self._make_handler()
-            handler.path = "/api/chat"
-            body = json.dumps({"message": "hello"}).encode("utf-8")
-            handler.headers = {"Content-Length": str(len(body))}
-            handler.rfile.read = MagicMock(return_value=body)
-            handler._handle_chat_request()
-
-        assert handler._response_code == 200
-        user_content = captured["json"]["messages"][0]["content"]
-        # Only text block, no image
-        assert len(user_content) == 1
-        assert user_content[0]["type"] == "text"
-
-    def test_chat_system_suffix_exists(self):
-        """CHAT_SYSTEM_SUFFIX constant is defined."""
-        assert hasattr(kb, "CHAT_SYSTEM_SUFFIX")
-        assert "CHAT MODE" in kb.CHAT_SYSTEM_SUFFIX
 
     def test_chat_port_constant(self):
         """CHAT_PORT is defined."""
@@ -5629,3 +5592,25 @@ class TestChatHandler:
         assert hasattr(kb, "ThreadedChatServer")
         from socketserver import ThreadingMixIn
         assert issubclass(kb.ThreadedChatServer, ThreadingMixIn)
+
+    def test_system_prompt_mentions_operator_chat(self):
+        """SYSTEM_PROMPT includes operator chat instructions."""
+        assert "OPERATOR CHAT" in kb.SYSTEM_PROMPT
+        assert "operator_message" in kb.SYSTEM_PROMPT
+
+    def test_journal_entry_includes_operator_message(self, tmp_dir):
+        """write_journal_entry includes operator_message field."""
+        kb.JOURNAL_DIR = tmp_dir / "journal"
+        kb.JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
+        decision = {
+            "observation": "test", "goal": "test", "reasoning": "test",
+            "thought": "hi", "mood": "ok", "actions": [], "tags": [],
+            "outcome": "neutral",
+        }
+        state = {"pan_position": 0, "tilt_position": 0}
+        kb.write_journal_entry("1", "sess", decision, "ok", state,
+                               operator_message="hello from Bucket")
+        journal_files = list(kb.JOURNAL_DIR.glob("*.jsonl"))
+        assert len(journal_files) == 1
+        entry = json.loads(journal_files[0].read_text().strip())
+        assert entry["operator_message"] == "hello from Bucket"

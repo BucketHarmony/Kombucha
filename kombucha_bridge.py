@@ -835,7 +835,7 @@ async def generate_session_summary(client, api_key, db, session_id):
 
 def write_journal_entry(tick_id, session_id, decision, result, state,
                         model_used=None, sme=None, prompt=None,
-                        raw_response=None):
+                        raw_response=None, operator_message=None):
     """Append a JSONL entry to the daily journal file."""
     JOURNAL_DIR.mkdir(parents=True, exist_ok=True)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -864,6 +864,7 @@ def write_journal_entry(tick_id, session_id, decision, result, state,
         "sme": sme,
         "prompt": prompt,
         "raw_response": raw_response,
+        "operator_message": operator_message,
     }
 
     try:
@@ -1744,6 +1745,13 @@ NOTE: Your own spoken words (from speak actions) are often picked up by the micr
 and appear in the "heard" log. Check "last_spoken" in the tick input to distinguish
 your own echoed speech from what others said.
 
+OPERATOR CHAT:
+If "operator_message" is present in the tick input, Bucket is talking to you through
+a text chat interface. This is a direct typed message — not noisy audio. Treat it with
+full confidence. Respond naturally by using the speak action and/or addressing it in
+your thought. You should still produce your full JSON tick response (with actions,
+observations, etc.) — this is a real tick, not a side conversation.
+
 MOVEMENT:
 - Differential drive: left/right wheel speeds. Max 1.3 m/s, 0.3-0.5 for indoor use.
 - left=right=positive: forward. left=right=negative: reverse.
@@ -1873,22 +1881,11 @@ memory_note: What from THIS tick is worth remembering beyond immediate context?
 identity_proposal: Rarely. A new truth about yourself you've discovered through experience.
 """
 
-CHAT_SYSTEM_SUFFIX = """
-=== CHAT MODE ===
-A human operator is talking to you directly through a chat interface.
-Respond CONVERSATIONALLY as yourself (Kombucha). Do NOT respond in JSON tick format.
-Just talk naturally.
-
-You can see your current camera view (attached). You have your full memory context.
-Answer questions, describe what you see, share your thoughts.
-Keep responses concise but characterful. Speak in first person.
-If asked to do something physical, explain you can only act during your tick loop.
-"""
-
 # --- LLM Brain Call -----------------------------------------------------------
 
 async def call_brain(client, api_key, frame_b64, state, memory_context,
-                     use_deep=False, sme=None, heard=None):
+                     use_deep=False, sme=None, heard=None,
+                     operator_message=None):
     """Call the mind with full memory context."""
     tick_input = {
         "tick": state["tick_count"],
@@ -1920,6 +1917,10 @@ async def call_brain(client, api_key, frame_b64, state, memory_context,
     # Inject speech transcripts
     if heard:
         tick_input["heard"] = heard
+
+    # Inject operator message from chat
+    if operator_message:
+        tick_input["operator_message"] = operator_message
 
     text_parts = []
     if memory_context.strip():
@@ -1979,20 +1980,27 @@ def parse_brain_response(api_resp):
 # MAIN LOOP
 # ==============================================================================
 
+# --- Operator Message Queue ---------------------------------------------------
+
+# Thread-safe queue for operator messages injected into the tick loop.
+# ChatHandler puts a (message, response_event, response_holder) tuple.
+# The tick loop drains it, runs a full tick with the message, and signals back.
+import queue as _queue_mod
+
+_operator_queue = _queue_mod.Queue(maxsize=1)
+
+# asyncio Event set by ChatHandler to wake the tick loop from sleep
+_operator_wake_event = threading.Event()
+
+
 # --- Chat HTTP Server ---------------------------------------------------------
 
 class ChatHandler(BaseHTTPRequestHandler):
     """HTTP handler for operator chat with Kombucha.
 
-    Class attributes are set before the server starts:
-        db, state, api_key, session_id, last_frame_b64
+    Accepts a message, injects it into the tick loop, waits for the
+    full tick to complete, and returns the tick's thought as the reply.
     """
-    db = None
-    state = None
-    api_key = ""
-    session_id = ""
-    last_frame_b64 = None
-    _frame_lock = threading.Lock()
 
     def log_message(self, format, *args):
         pass  # suppress default stderr logging
@@ -2026,7 +2034,6 @@ class ChatHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def _handle_chat_request(self):
-        # Read body
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length > 100_000:
             self._send_json(413, {"error": "Request too large"})
@@ -2043,85 +2050,27 @@ class ChatHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "Empty message"})
             return
 
+        # Put message into queue for the tick loop to pick up
+        response_event = threading.Event()
+        response_holder = {}  # will be filled by tick loop
+
         try:
-            reply = self._call_chat(user_message)
-            self._send_json(200, {"reply": reply})
-        except Exception as e:
-            log.error(f"Chat error: {e}")
-            self._send_json(502, {"error": str(e)})
+            _operator_queue.put_nowait((user_message, response_event, response_holder))
+        except _queue_mod.Full:
+            self._send_json(429, {"error": "A message is already being processed"})
+            return
 
-    def _call_chat(self, user_message):
-        """Build prompt with memory context + camera frame, call Anthropic API."""
-        state_snap = self.state.copy() if self.state else {}
-        session_id = self.session_id
+        # Wake the tick loop from sleep
+        _operator_wake_event.set()
 
-        # Assemble memory context (WAL mode — concurrent reads safe)
-        memory_context = ""
-        if self.db:
-            try:
-                memory_context = assemble_memory_context(self.db, state_snap, session_id)
-            except Exception as e:
-                log.warning(f"Chat memory assembly failed: {e}")
-
-        # Build tick-like input
-        tick_input = {
-            "tick": state_snap.get("tick_count", 0),
-            "current_goal": state_snap.get("goal", "idle"),
-            "mood": state_snap.get("mood", "neutral"),
-            "time": datetime.now().strftime("%H:%M"),
-        }
-
-        text_parts = []
-        if memory_context.strip():
-            text_parts.append(memory_context)
-        text_parts.append("=== CURRENT STATE ===")
-        text_parts.append(json.dumps(tick_input, indent=2))
-        text_parts.append(f"=== OPERATOR MESSAGE ===\n{user_message}")
-
-        # Build user content blocks
-        user_content = []
-
-        # Attach cached camera frame if available
-        with self._frame_lock:
-            frame = self.last_frame_b64
-
-        if frame:
-            user_content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": frame,
-                }
-            })
-
-        user_content.append({
-            "type": "text",
-            "text": "\n".join(text_parts),
-        })
-
-        system_prompt = SYSTEM_PROMPT + CHAT_SYSTEM_SUFFIX
-
-        # Synchronous API call (we're in a thread)
-        with httpx.Client() as client:
-            resp = client.post(
-                ANTHROPIC_API,
-                headers={
-                    "x-api-key": self.api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": MODEL,
-                    "max_tokens": MAX_TOKENS,
-                    "system": system_prompt,
-                    "messages": [{"role": "user", "content": user_content}],
-                },
-                timeout=60.0,
-            )
-            resp.raise_for_status()
-            api_json = resp.json()
-            return api_json.get("content", [{}])[0].get("text", "")
+        # Wait for the tick loop to process and respond (up to 90s)
+        if response_event.wait(timeout=90):
+            if "error" in response_holder:
+                self._send_json(502, {"error": response_holder["error"]})
+            else:
+                self._send_json(200, {"reply": response_holder.get("reply", "")})
+        else:
+            self._send_json(504, {"error": "Tick processing timed out"})
 
 
 class ThreadedChatServer(ThreadingMixIn, HTTPServer):
@@ -2238,11 +2187,6 @@ async def main():
         log.info("Vosk/PyAudio not installed, running without hearing")
 
     # Start chat server
-    ChatHandler.db = db
-    ChatHandler.state = state
-    ChatHandler.api_key = api_key
-    ChatHandler.session_id = session_id
-
     chat_server = ThreadedChatServer(("", CHAT_PORT), ChatHandler)
     chat_thread = threading.Thread(target=chat_server.serve_forever, daemon=True)
     chat_thread.start()
@@ -2273,8 +2217,6 @@ async def main():
                 # 1. SEE
                 try:
                     frame_b64 = capture_frame_b64(cap, state["tick_count"])
-                    with ChatHandler._frame_lock:
-                        ChatHandler.last_frame_b64 = frame_b64
                 except Exception as e:
                     log.error(f"Camera capture failed: {e}")
                     state["consecutive_errors"] += 1
@@ -2309,12 +2251,26 @@ async def main():
                 if heard:
                     log.info(f"  HEARD: {json.dumps(heard)}")
 
+                # 3c. CHECK for operator message from chat
+                operator_message = None
+                operator_response_event = None
+                operator_response_holder = None
+                try:
+                    msg, evt, holder = _operator_queue.get_nowait()
+                    operator_message = msg
+                    operator_response_event = evt
+                    operator_response_holder = holder
+                    use_deep = True  # always use Opus for operator interactions
+                    log.info(f"  OPERATOR: {operator_message}")
+                except _queue_mod.Empty:
+                    pass
+
                 try:
                     log.info(f"Tick {state['tick_count']} | goal: {state['goal']}")
                     api_resp, model_used, prompt_text, raw_response = await call_brain(
                         client, api_key, frame_b64, state,
                         memory_context, use_deep=use_deep, sme=sme,
-                        heard=heard,
+                        heard=heard, operator_message=operator_message,
                     )
                     decision = parse_brain_response(api_resp)
                     state["consecutive_errors"] = 0
@@ -2323,6 +2279,9 @@ async def main():
                 except httpx.HTTPStatusError as e:
                     log.error(f"API error {e.response.status_code}: {e.response.text[:200]}")
                     state["consecutive_errors"] = state.get("consecutive_errors", 0) + 1
+                    if operator_response_event:
+                        operator_response_holder["error"] = f"API error {e.response.status_code}"
+                        operator_response_event.set()
                     if ser or DEBUG_MODE:
                         send_tcode(ser, {"T": 0})
                         send_tcode(ser, {"T": 3, "lineNum": 0, "Text": "thinking..."})
@@ -2333,6 +2292,9 @@ async def main():
                 except Exception as e:
                     log.error(f"Brain call failed: {e}")
                     state["consecutive_errors"] = state.get("consecutive_errors", 0) + 1
+                    if operator_response_event:
+                        operator_response_holder["error"] = str(e)
+                        operator_response_event.set()
                     if ser or DEBUG_MODE:
                         send_tcode(ser, {"T": 0})
                         send_tcode(ser, {"T": 3, "lineNum": 0, "Text": "thinking..."})
@@ -2383,7 +2345,13 @@ async def main():
                 write_journal_entry(tick_id, session_id, decision, result, state,
                                     model_used=model_used, sme=sme,
                                     prompt=prompt_text,
-                                    raw_response=raw_response)
+                                    raw_response=raw_response,
+                                    operator_message=operator_message)
+
+                # 6b. Signal operator chat response
+                if operator_response_event:
+                    operator_response_holder["reply"] = decision.get("thought", "")
+                    operator_response_event.set()
 
                 # Stash frame for next tick's self-model error
                 prev_frame_b64 = frame_b64
@@ -2416,6 +2384,8 @@ async def main():
                     log.info(f"  GOAL CHANGED: '{old_goal}' -> '{state['goal']}'")
 
                 # 9. WAIT — with sentry mode for long sleeps
+                # Operator messages interrupt sleep immediately
+                _operator_wake_event.clear()
                 next_tick_ms = decision.get("next_tick_ms", int(LOOP_INTERVAL * 1000))
                 next_tick_ms = max(2000, min(60000, next_tick_ms))
                 next_tick_s  = next_tick_ms / 1000
@@ -2432,7 +2402,14 @@ async def main():
                     if wake_reason == "motion_detected":
                         log.info("  Woke from sentry: motion detected")
                 else:
-                    await asyncio.sleep(sleep_for)
+                    # Sleep in small increments so operator messages wake us
+                    deadline = time.time() + sleep_for
+                    while time.time() < deadline and running:
+                        if _operator_wake_event.is_set():
+                            _operator_wake_event.clear()
+                            log.info("  Woke early: operator message")
+                            break
+                        await asyncio.sleep(min(0.25, deadline - time.time()))
 
     finally:
         log.info("Shutting down...")

@@ -569,96 +569,27 @@ HTML_PAGE = r"""<!DOCTYPE html>
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
     font-size: 14px;
     line-height: 1.5;
-    overflow: hidden;
+    overflow-y: auto;
   }
 
   ::-webkit-scrollbar { width: 8px; }
   ::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
   ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
 
-  #main {
-    display: flex;
-    height: calc(100vh - 52px);
-    overflow: hidden;
-  }
-
-  #chat-panel {
-    flex: 0 0 40%;
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--card-border);
+  #chat-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
     background: var(--bg);
-  }
-
-  #journal-panel {
-    flex: 1;
-    overflow-y: auto;
-  }
-
-  .chat-header {
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--card-border);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-bright);
-  }
-
-  #chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .chat-msg {
-    max-width: 85%;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    line-height: 1.45;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-  }
-
-  .chat-msg.user {
-    align-self: flex-end;
-    background: var(--accent-dim);
-    color: var(--text-bright);
-    border-bottom-right-radius: 2px;
-  }
-
-  .chat-msg.kombucha {
-    align-self: flex-start;
-    background: var(--card-bg);
-    color: var(--text);
-    border: 1px solid var(--card-border);
-    border-bottom-left-radius: 2px;
-  }
-
-  .chat-msg.error {
-    align-self: flex-start;
-    background: #3d1a1a;
-    color: #f85149;
-    border: 1px solid #da3633;
-    font-size: 12px;
-  }
-
-  .chat-msg.thinking {
-    align-self: flex-start;
-    color: var(--text-dim);
-    font-style: italic;
-    background: none;
-    padding: 4px 12px;
-  }
-
-  .chat-input-area {
-    padding: 10px 12px;
     border-top: 1px solid var(--card-border);
+    padding: 10px 16px;
     display: flex;
     gap: 8px;
     align-items: flex-end;
+    z-index: 100;
+    max-width: 900px;
+    margin: 0 auto;
   }
 
   #chat-input {
@@ -695,6 +626,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   #chat-send:hover { background: var(--accent); }
   #chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #chat-status {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-style: italic;
+    white-space: nowrap;
+    align-self: center;
+  }
 
   header {
     position: sticky;
@@ -763,7 +702,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
   }
 
   #feed {
-    padding: 16px;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 16px 16px 70px;
     display: flex;
     flex-direction: column;
     gap: 12px;
@@ -999,6 +940,20 @@ HTML_PAGE = r"""<!DOCTYPE html>
     content: "Note: ";
     font-weight: 600;
     font-style: normal;
+  }
+
+  .tick-operator {
+    font-size: 13px;
+    color: var(--accent);
+    background: var(--goal-bg);
+    border-left: 2px solid var(--accent);
+    padding: 4px 10px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .tick-operator::before {
+    content: "Bucket: ";
+    font-weight: 600;
   }
 
   .tick-actions {
@@ -1274,12 +1229,6 @@ HTML_PAGE = r"""<!DOCTYPE html>
     cursor: pointer;
   }
 
-  @media (max-width: 900px) {
-    #main { flex-direction: column; }
-    #chat-panel { flex: 0 0 auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--card-border); }
-    #journal-panel { flex: 1; }
-  }
-
   @media (max-width: 700px) {
     .tick-card { flex-direction: column; }
     .tick-frame { flex: 0 0 auto; max-height: 250px; }
@@ -1297,19 +1246,13 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div class="telemetry" id="telemetry"></div>
 </header>
 
-<div id="main">
-  <div id="chat-panel">
-    <div class="chat-header">Chat with Kombucha</div>
-    <div id="chat-messages"></div>
-    <div class="chat-input-area">
-      <textarea id="chat-input" rows="1" placeholder="Say something to Kombucha..."></textarea>
-      <button id="chat-send" onclick="sendChat()">Send</button>
-    </div>
-  </div>
-  <div id="journal-panel">
-    <div id="feed"></div>
-    <div id="sentinel"></div>
-  </div>
+<div id="feed"></div>
+<div id="sentinel"></div>
+
+<div id="chat-bar">
+  <textarea id="chat-input" rows="1" placeholder="Say something to Kombucha..."></textarea>
+  <span id="chat-status"></span>
+  <button id="chat-send" onclick="sendChat()">Send</button>
 </div>
 
 <button class="auto-scroll-badge" id="scrollBtn" onclick="scrollToTop()">
@@ -1336,10 +1279,9 @@ HTML_PAGE = r"""<!DOCTYPE html>
   const statusText = document.getElementById('statusText');
   const tickCountEl = document.getElementById('tickCount');
   const scrollBtn = document.getElementById('scrollBtn');
-  const journalPanel = document.getElementById('journal-panel');
-  const chatMessages = document.getElementById('chat-messages');
   const chatInput = document.getElementById('chat-input');
   const chatSendBtn = document.getElementById('chat-send');
+  const chatStatus = document.getElementById('chat-status');
 
   // --- Full-frame overlay ---
   function showFullFrame(src, tickJson) {
@@ -1590,6 +1532,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       ? '<div class="tick-note">' + escHtml(t.memory_note) + '</div>'
       : '';
 
+    // Operator message
+    var operatorHtml = t.operator_message
+      ? '<div class="tick-operator">' + escHtml(t.operator_message) + '</div>'
+      : '';
+
     // Prompt/Response inspect icons — store data in JS map, reference by tick num
     var inspectHtml = '';
     if (t.prompt || t.raw_response) {
@@ -1656,6 +1603,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
           '</div>' +
           '<div class="tick-time">' + escHtml(timeStr) + '</div>' +
         '</div>' +
+        operatorHtml +
         '<div class="tick-obs">' + escHtml(t.observation || t.obs || '') + '</div>' +
         (t.reasoning ? '<div class="tick-reasoning">' + escHtml(t.reasoning) + '</div>' : '') +
         (t.thought ? '<div class="tick-thought">' + escHtml(t.thought) + '</div>' : '') +
@@ -1721,7 +1669,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
     if (entries[0].isIntersecting && offset < totalTicks) {
       loadTicks(true);
     }
-  }, { root: journalPanel, rootMargin: '200px' });
+  }, { rootMargin: '200px' });
   observer.observe(sentinel);
 
   // --- SSE for real-time new ticks ---
@@ -1747,7 +1695,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
         feed.insertBefore(card, feed.firstChild);
 
         if (autoScroll) {
-          journalPanel.scrollTo({ top: 0, behavior: 'smooth' });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         } else {
           newTicksPending = true;
           scrollBtn.classList.add('visible');
@@ -1767,10 +1715,10 @@ HTML_PAGE = r"""<!DOCTYPE html>
 
   // --- Auto-scroll detection ---
   var scrollTimer;
-  journalPanel.addEventListener('scroll', function() {
+  window.addEventListener('scroll', function() {
     clearTimeout(scrollTimer);
     scrollTimer = setTimeout(function() {
-      autoScroll = journalPanel.scrollTop < 100;
+      autoScroll = window.scrollY < 100;
       if (autoScroll && newTicksPending) {
         newTicksPending = false;
         scrollBtn.classList.remove('visible');
@@ -1779,7 +1727,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   });
 
   window.scrollToTop = function() {
-    journalPanel.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     autoScroll = true;
     newTicksPending = false;
     scrollBtn.classList.remove('visible');
@@ -1853,29 +1801,18 @@ HTML_PAGE = r"""<!DOCTYPE html>
   updateTelemetry();
   setInterval(updateTelemetry, 5000);
 
-  // --- Chat functions ---
-  function appendChatMsg(text, cls) {
-    var el = document.createElement('div');
-    el.className = 'chat-msg ' + cls;
-    el.textContent = text;
-    chatMessages.appendChild(el);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    return el;
-  }
-
+  // --- Chat bar (triggers a full tick with operator message) ---
   var chatBusy = false;
 
   window.sendChat = function() {
     var msg = chatInput.value.trim();
     if (!msg || chatBusy) return;
 
-    appendChatMsg(msg, 'user');
     chatInput.value = '';
     chatInput.style.height = 'auto';
     chatBusy = true;
     chatSendBtn.disabled = true;
-
-    var thinkEl = appendChatMsg('Kombucha is thinking...', 'thinking');
+    chatStatus.textContent = 'Sending to Kombucha...';
 
     fetch('/api/chat', {
       method: 'POST',
@@ -1884,16 +1821,15 @@ HTML_PAGE = r"""<!DOCTYPE html>
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      thinkEl.remove();
       if (data.error) {
-        appendChatMsg('Error: ' + data.error, 'error');
+        chatStatus.textContent = 'Error: ' + data.error;
       } else {
-        appendChatMsg(data.reply || '(no response)', 'kombucha');
+        chatStatus.textContent = 'Tick complete';
+        setTimeout(function() { chatStatus.textContent = ''; }, 3000);
       }
     })
     .catch(function(err) {
-      thinkEl.remove();
-      appendChatMsg('Connection error: ' + err.message, 'error');
+      chatStatus.textContent = 'Connection error';
     })
     .finally(function() {
       chatBusy = false;
@@ -1902,13 +1838,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
     });
   };
 
-  // Auto-resize textarea
   chatInput.addEventListener('input', function() {
     this.style.height = 'auto';
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';
   });
 
-  // Enter to send, Shift+Enter for newline
   chatInput.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
