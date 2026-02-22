@@ -82,10 +82,15 @@ class SceneObject:
 class SceneState:
     timestamp: str = ""
     frame_delta: Optional[float] = None
+    frame_delta_avg: Optional[float] = None  # rolling average over recent frames
+    frame_delta_max: Optional[float] = None  # max over recent frames
     motion_detected: bool = False
     objects: list[SceneObject] = field(default_factory=list)
     person_count: int = 0
-    frame_b64: Optional[str] = None      # JPEG base64 for brain vision
+    nearest_obstacle_cm: Optional[float] = None  # closest non-person object
+    floor_visible: bool = True
+    light_level: Optional[str] = None     # dark | dim | normal | bright
+    frame_b64: Optional[str] = None       # JPEG base64 for brain vision
 
     def to_json(self) -> str:
         d = asdict(self)
@@ -95,7 +100,7 @@ class SceneState:
     def from_json(cls, s: str) -> "SceneState":
         d = json.loads(s)
         objects = [SceneObject.from_dict(o) for o in d.pop("objects", [])]
-        return cls(objects=objects, **d)
+        return cls(objects=objects, **{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 # ---------------------------------------------------------------------------
@@ -105,22 +110,53 @@ class SceneState:
 @dataclass
 class HardwareContext:
     timestamp: str = ""
+    # Power
     battery_v: Optional[float] = None
-    cpu_temp_c: Optional[float] = None
+    battery_pct: Optional[int] = None        # 0-100 estimated from voltage
+    battery_state: str = ""                   # charging | discharging | unknown
+    # Locomotion
     odometer_l: int = 0
     odometer_r: int = 0
+    motor_speed_l: Optional[float] = None    # current L wheel speed m/s
+    motor_speed_r: Optional[float] = None    # current R wheel speed m/s
+    chassis_moving: bool = False
+    stuck: bool = False
+    # IMU
+    imu_accel_x: Optional[float] = None
+    imu_accel_y: Optional[float] = None
+    imu_accel_z: Optional[float] = None
+    imu_gyro_x: Optional[float] = None
+    imu_gyro_y: Optional[float] = None
+    imu_gyro_z: Optional[float] = None
+    tilt_deg: Optional[float] = None         # derived from accel
+    lifted: bool = False                     # z-accel anomaly
+    # Gimbal
     pan_position: int = 0
     tilt_position: int = 0
-    wifi_rssi: Optional[int] = None
-    disk_free_mb: Optional[int] = None
+    # Vision
+    fps_actual: Optional[float] = None
+    light_level: Optional[str] = None        # dark | dim | normal | bright
+    camera_connected: bool = True
+    # Audio
+    mic_connected: bool = False
+    speaker_connected: bool = False
+    is_speaking: bool = False
+    last_human_speech_ago_s: Optional[float] = None
+    # System
+    cpu_temp_c: Optional[float] = None
+    cpu_load: Optional[float] = None         # 1-min load average
     ram_used_pct: Optional[float] = None
+    disk_free_mb: Optional[int] = None
+    wifi_rssi: Optional[int] = None
+    uptime_s: Optional[int] = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
 
     @classmethod
     def from_json(cls, s: str) -> "HardwareContext":
-        return cls(**json.loads(s))
+        d = json.loads(s)
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 # ---------------------------------------------------------------------------

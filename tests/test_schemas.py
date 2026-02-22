@@ -127,6 +127,27 @@ class TestSceneState:
         assert len(restored.objects) == 1
         assert restored.objects[0].cls == "person"
 
+    def test_extended_fields(self):
+        scene = SceneState(
+            frame_delta=0.05,
+            frame_delta_avg=0.03,
+            frame_delta_max=0.08,
+            nearest_obstacle_cm=150.0,
+            floor_visible=True,
+            light_level="dim",
+        )
+        json_str = scene.to_json()
+        restored = SceneState.from_json(json_str)
+        assert restored.frame_delta_avg == 0.03
+        assert restored.frame_delta_max == 0.08
+        assert restored.nearest_obstacle_cm == 150.0
+        assert restored.light_level == "dim"
+
+    def test_from_json_ignores_extra_keys(self):
+        json_str = json.dumps({"frame_delta": 0.01, "unknown_field": True})
+        scene = SceneState.from_json(json_str)
+        assert scene.frame_delta == 0.01
+
     def test_empty_scene_roundtrip(self):
         scene = SceneState()
         json_str = scene.to_json()
@@ -139,6 +160,19 @@ class TestHardwareContext:
         hw = HardwareContext()
         assert hw.battery_v is None
         assert hw.cpu_temp_c is None
+        assert hw.battery_pct is None
+        assert hw.battery_state == ""
+        assert hw.motor_speed_l is None
+        assert hw.chassis_moving is False
+        assert hw.stuck is False
+        assert hw.imu_accel_x is None
+        assert hw.tilt_deg is None
+        assert hw.lifted is False
+        assert hw.fps_actual is None
+        assert hw.light_level is None
+        assert hw.mic_connected is False
+        assert hw.cpu_load is None
+        assert hw.uptime_s is None
 
     def test_json_roundtrip(self):
         hw = HardwareContext(
@@ -154,6 +188,38 @@ class TestHardwareContext:
         restored = HardwareContext.from_json(json_str)
         assert restored.battery_v == 11.77
         assert restored.pan_position == 45
+
+    def test_extended_fields_roundtrip(self):
+        hw = HardwareContext(
+            battery_pct=75,
+            battery_state="discharging",
+            motor_speed_l=0.3,
+            motor_speed_r=0.31,
+            chassis_moving=True,
+            imu_accel_z=0.98,
+            tilt_deg=5.2,
+            fps_actual=8.5,
+            light_level="normal",
+            cpu_load=1.5,
+            uptime_s=3600,
+        )
+        json_str = hw.to_json()
+        restored = HardwareContext.from_json(json_str)
+        assert restored.battery_pct == 75
+        assert restored.battery_state == "discharging"
+        assert restored.motor_speed_l == 0.3
+        assert restored.chassis_moving is True
+        assert restored.imu_accel_z == 0.98
+        assert restored.tilt_deg == 5.2
+        assert restored.fps_actual == 8.5
+        assert restored.light_level == "normal"
+        assert restored.cpu_load == 1.5
+        assert restored.uptime_s == 3600
+
+    def test_from_json_ignores_extra_keys(self):
+        json_str = json.dumps({"battery_v": 11.5, "future_field": "ignored"})
+        hw = HardwareContext.from_json(json_str)
+        assert hw.battery_v == 11.5
 
 
 class TestSelfModelError:

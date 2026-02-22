@@ -84,6 +84,19 @@ def shutdown_handler(signum, _frame):
 signal.signal(signal.SIGTERM, shutdown_handler)
 signal.signal(signal.SIGINT, shutdown_handler)
 
+# SIGHUP triggers prompt hot-reload (Unix only)
+_reload_prompts_flag = False
+
+
+def _sighup_handler(signum, _frame):
+    global _reload_prompts_flag
+    log.info("SIGHUP received — flagging prompt reload")
+    _reload_prompts_flag = True
+
+
+if hasattr(signal, "SIGHUP"):
+    signal.signal(signal.SIGHUP, _sighup_handler)
+
 # --- Operator Message Queue ---------------------------------------------------
 
 _operator_queue = _queue_mod.Queue(maxsize=1)
@@ -468,6 +481,15 @@ async def main():
                 state["tick_count"] += 1
                 tick_id = str(state["tick_count"])
 
+                # Hot-reload prompts if SIGHUP was received
+                global _reload_prompts_flag
+                if _reload_prompts_flag:
+                    _reload_prompts_flag = False
+                    log.info("Reloading prompts from filesystem...")
+                    memory.reload_prompts(config.paths.prompts_dir)
+                    system_prompt = load_prompt("system.md", config.paths.prompts_dir)
+                    log.info("Prompts reloaded.")
+
                 # Reconnect serial if lost
                 if not config.debug_mode and not serial.is_connected:
                     serial.reconnect()
@@ -680,8 +702,32 @@ async def main():
                     })
 
                 # 6. REMEMBER
+                # Build scene/hardware summaries for memory
+                _scene_parts = []
+                if sme and sme.get("frame_delta") is not None:
+                    _scene_parts.append(f"delta={sme['frame_delta']:.3f}")
+                if sme and sme.get("motion_detected"):
+                    _scene_parts.append("motion")
+                _scene_summary = "; ".join(_scene_parts) if _scene_parts else None
+
+                _hw_parts = []
+                if state.get("battery_v"):
+                    _hw_parts.append(f"batt={state['battery_v']}V")
+                if state.get("cpu_temp_c"):
+                    _hw_parts.append(f"cpu={state['cpu_temp_c']}C")
+                _hw_summary = "; ".join(_hw_parts) if _hw_parts else None
+
+                _events = []
+                if sme and sme.get("anomaly"):
+                    _events.append({"type": "sme_anomaly", "reason": sme.get("anomaly_reason")})
+                if heard:
+                    _events.append({"type": "human_speech", "count": len(heard)})
+
                 memory.insert_tick(tick_id, session_id, decision,
-                                   model_used=model_used, sme=sme)
+                                   model_used=model_used, sme=sme,
+                                   scene_summary=_scene_summary,
+                                   hardware_summary=_hw_summary,
+                                   events=_events if _events else None)
                 memory.write_journal_entry(
                     tick_id, session_id, decision, result, state,
                     model_used=model_used, sme=sme,

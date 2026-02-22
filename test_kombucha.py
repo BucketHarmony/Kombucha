@@ -2806,7 +2806,7 @@ class TestCompressStructured:
         assert row["summary"] == "Old format summary."
 
     def test_compress_max_tokens_bumped(self, db):
-        """Compression uses 800 max_tokens."""
+        """Compression uses 1200 max_tokens (structured output needs more room)."""
         for i in range(kb.WORKING_MEMORY_SIZE + 3):
             decision = {"observation": f"obs_{i}", "goal": "test", "mood": "ok",
                         "actions": [], "tags": [], "outcome": "neutral"}
@@ -2827,7 +2827,7 @@ class TestCompressStructured:
 
         call_args = mock_client.post.call_args
         body = call_args.kwargs.get("json", call_args[1].get("json", {}))
-        assert body["max_tokens"] == 800
+        assert body["max_tokens"] == 1200
 
     def test_compress_includes_qualia(self, db):
         """Compression prompt includes qualia fields when present."""

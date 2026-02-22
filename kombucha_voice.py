@@ -22,6 +22,7 @@ from kombucha.config import load_config
 from kombucha.redis_bus import RedisBus
 from kombucha.schemas import SpeechUtterance, Event, MotorCommand
 from kombucha.audio import speak_async, HAS_WHISPER, HAS_VOSK
+from kombucha.health import HealthMonitor
 
 # --- CLI Args -----------------------------------------------------------------
 
@@ -104,6 +105,8 @@ def is_stop_command(text: str) -> bool:
 async def main():
     bus = RedisBus(config.redis)
     echo_gate = EchoGate(tail_s=config.audio.echo_gate_tail_s)
+    health = HealthMonitor()
+    last_human_speech_time = None
 
     log.info("Voice layer starting...")
 
@@ -182,6 +185,7 @@ async def main():
                     )
                     bus.append_speech(utterance)
                     bus.publish_wake("human_speech")
+                    last_human_speech_time = time.time()
 
             # --- TTS output (read from brain's queue) ---
             speech_out = bus.pop_speech_out()
@@ -193,6 +197,15 @@ async def main():
                 est_duration = max(1.0, len(speech_out) / 150 * 60 / 5)
                 await asyncio.sleep(est_duration)
                 echo_gate.stop_speaking()
+
+            # --- Health reporting ---
+            health_report = {
+                "audio": health.check_audio(
+                    stt_listener=stt_listener,
+                    is_speaking=echo_gate.is_active,
+                ),
+            }
+            bus.set_status("voice", health_report)
 
             await asyncio.sleep(0.1)  # 100ms poll interval
 

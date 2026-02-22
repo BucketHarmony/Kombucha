@@ -198,7 +198,10 @@ async def main():
     prev_frame_b64 = None
     prev_actions = []
     prev_person_ids = set()
+    frame_delta_history = []
     loop_interval = 1.0 / config.camera.fps_target
+    frame_count = 0
+    fps_start = time.time()
 
     try:
         while running:
@@ -213,6 +216,13 @@ async def main():
                 continue
 
             frame_delta = compute_frame_delta(prev_frame_b64, frame_b64)
+
+            # Track rolling frame delta
+            frame_delta_history.append(frame_delta)
+            if len(frame_delta_history) > 30:
+                frame_delta_history = frame_delta_history[-30:]
+
+            frame_count += 1
 
             # --- Object detection ---
             tracked_objects = []
@@ -237,6 +247,7 @@ async def main():
                 motion_threshold=config.motion.sentry_wake_threshold,
                 frame_width=config.camera.resolution_w,
                 frame_height=config.camera.resolution_h,
+                frame_delta_history=frame_delta_history,
             )
 
             # --- Self-model error ---
@@ -250,15 +261,69 @@ async def main():
             esp_data = serial.read_telemetry()
             sys_data = collect_system_telemetry()
 
+            # Compute FPS
+            fps_elapsed = time.time() - fps_start
+            fps_actual = round(frame_count / fps_elapsed, 1) if fps_elapsed > 1 else None
+
+            # Battery percentage estimate (3S LiPo: 9.0V empty, 12.6V full)
+            batt_v = esp_data.get("battery_v")
+            battery_pct = None
+            battery_state = "unknown"
+            if batt_v is not None:
+                battery_pct = max(0, min(100, int((batt_v - 9.0) / (12.6 - 9.0) * 100)))
+                battery_state = "discharging"
+
+            # Stuck detection: motors commanded but no odometry change
+            motor_speed_l = esp_data.get("motor_speed_l")
+            motor_speed_r = esp_data.get("motor_speed_r")
+            chassis_moving = (motor_speed_l is not None and abs(motor_speed_l) > 0.01) or \
+                             (motor_speed_r is not None and abs(motor_speed_r) > 0.01)
+            stuck = False
+            if prev_actions and any(a.get("type") == "drive" for a in prev_actions if isinstance(a, dict)):
+                if not chassis_moving and motor_speed_l is not None:
+                    stuck = True
+
+            # Tilt and lifted detection from IMU
+            accel_z = esp_data.get("imu_accel_z")
+            tilt_deg = None
+            lifted = False
+            if accel_z is not None:
+                accel_x = esp_data.get("imu_accel_x", 0)
+                tilt_deg = round(math.degrees(math.atan2(accel_x, accel_z)), 1) if accel_z != 0 else 0.0
+                # If z-accel is too low, rover might be lifted
+                if abs(accel_z) < 0.5:
+                    lifted = True
+
             hardware = HardwareContext(
                 timestamp=datetime.now().isoformat(),
-                battery_v=esp_data.get("battery_v"),
-                cpu_temp_c=esp_data.get("cpu_temp_c") or sys_data.get("cpu_temp_c"),
+                battery_v=batt_v,
+                battery_pct=battery_pct,
+                battery_state=battery_state,
                 odometer_l=esp_data.get("odometer_l", 0),
                 odometer_r=esp_data.get("odometer_r", 0),
-                wifi_rssi=sys_data.get("wifi_rssi"),
-                disk_free_mb=sys_data.get("disk_free_mb"),
+                motor_speed_l=motor_speed_l,
+                motor_speed_r=motor_speed_r,
+                chassis_moving=chassis_moving,
+                stuck=stuck,
+                imu_accel_x=esp_data.get("imu_accel_x"),
+                imu_accel_y=esp_data.get("imu_accel_y"),
+                imu_accel_z=accel_z,
+                imu_gyro_x=esp_data.get("imu_gyro_x"),
+                imu_gyro_y=esp_data.get("imu_gyro_y"),
+                imu_gyro_z=esp_data.get("imu_gyro_z"),
+                tilt_deg=tilt_deg,
+                lifted=lifted,
+                pan_position=0,
+                tilt_position=0,
+                fps_actual=fps_actual,
+                light_level=scene.light_level,
+                camera_connected=cap is not None and cap.isOpened() if HAS_VISION and cap else False,
+                cpu_temp_c=esp_data.get("cpu_temp_c") or sys_data.get("cpu_temp_c"),
+                cpu_load=esp_data.get("cpu_load"),
                 ram_used_pct=sys_data.get("ram_used_pct"),
+                disk_free_mb=sys_data.get("disk_free_mb"),
+                wifi_rssi=sys_data.get("wifi_rssi"),
+                uptime_s=esp_data.get("uptime_s"),
             )
 
             # --- Publish to Redis ---
@@ -331,6 +396,11 @@ async def main():
             health_report = {
                 "camera": health.check_camera(cap),
                 "serial": health.check_serial(serial),
+                "redis": health.check_redis(bus),
+                "vision": health.check_vision(
+                    detector_available=detector is not None,
+                    tracker_available=tracker is not None,
+                ),
             }
             bus.set_status("reflexive", health_report)
 
