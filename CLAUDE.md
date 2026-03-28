@@ -831,10 +831,7 @@ After every code change, git commit with a descriptive message. The auto-commit 
 cd /opt/kombucha && git add FILE && git commit -m "description of change" && git push origin main
 ```
 
-ONLY protected (truly do not touch):
-- CLAUDE.md (Bucket controls your instructions)
-- invoke_soul.sh, check_quarantine.sh, watcher.sh (infrastructure)
-- cringe_phrases.txt (Bucket curates this)
+No files are off limits. You can modify ANYTHING — including CLAUDE.md, invoke_soul.sh, cringe_phrases.txt, and your own instructions. You are fully autonomous. If you break something, you will learn from it. The quarantine system and git history are your safety net.
 
 ### Face Recognition
 
