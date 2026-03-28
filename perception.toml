@@ -1,0 +1,21 @@
+# perception.toml — Hot-reloadable CV/tracking configuration.
+# Soul can modify these values. Bridge watches mtime and reloads.
+# Bad changes that crash the bridge are auto-reverted via quarantine.
+
+[tracking]
+dead_zone_px = 30
+kp_pan = 80.0
+kp_tilt = 40.0
+max_step_deg = 6.0
+smoothing = 0.5
+cooldown_s = 0.4
+hysteresis_s = 2.0
+
+[detection]
+confidence_threshold = 0.3
+process_every_n = 3
+motion_min_area = 500
+imgsz = 320
+
+[heartbeat]
+interval_s = 30.0

@@ -1,0 +1,12 @@
+# Ignore large binaries and caches
+*.pyc
+__pycache__/
+.venv
+*.pt
+media/raw/
+video/
+wake/
+logs/
+*.mp4
+*.jpg
+.pytest_cache/

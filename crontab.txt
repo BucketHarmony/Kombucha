@@ -1,0 +1,14 @@
+# Kombucha crontab — install with: crontab /opt/kombucha/crontab.txt
+#
+# Boot: first invocation 2 minutes after startup
+@reboot sleep 120 && /opt/kombucha/invoke_soul.sh boot >> /opt/kombucha/logs/cron.log 2>&1
+
+# Heartbeat: hourly check-in
+0 * * * * /opt/kombucha/invoke_soul.sh heartbeat >> /opt/kombucha/logs/cron.log 2>&1
+
+# Dream: nightly maintenance at 2am
+0 2 * * * /opt/kombucha/invoke_soul.sh dream >> /opt/kombucha/logs/cron.log 2>&1
+
+# Storage cleanup: delete old video files (>7 days) and wake frames (>3 days)
+0 4 * * * find /home/bucket/kombucha/video -name "*.mp4" -mtime +7 -delete 2>/dev/null
+0 4 * * * find /home/bucket/kombucha/wake -name "*.jpg" -mtime +3 -delete 2>/dev/null
