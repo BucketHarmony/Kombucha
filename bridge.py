@@ -7,8 +7,10 @@ Composition root: creates all objects, wires dependencies, exposes REST API.
 
 import csv
 import io
+import json
 import logging
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -642,6 +644,207 @@ def get_frustration():
     if heartbeat:
         return {"frustration": heartbeat.frustration}
     return {"frustration": 0}
+
+
+# -----------------------------------------------------------------------------
+# Chat Endpoint
+# -----------------------------------------------------------------------------
+
+CHAT_LOG = Path("/opt/kombucha/state/chat.json")
+_chat_lock = threading.Lock()
+
+
+class ChatModel(BaseModel):
+    message: str
+
+
+def _load_chat() -> list[dict]:
+    if CHAT_LOG.exists():
+        try:
+            return json.loads(CHAT_LOG.read_text())
+        except Exception:
+            return []
+    return []
+
+
+def _save_chat(history: list[dict]):
+    CHAT_LOG.parent.mkdir(parents=True, exist_ok=True)
+    CHAT_LOG.write_text(json.dumps(history, indent=2))
+
+
+@app.post("/chat")
+def post_chat(body: ChatModel):
+    """Send a message to Kombucha. Returns response in character."""
+
+    with _chat_lock:
+        history = _load_chat()
+        history.append({
+            "role": "human",
+            "text": body.message,
+            "time": datetime.now().strftime("%H:%M:%S"),
+        })
+
+        # Build context: last 10 messages + sense snapshot
+        recent = history[-10:]
+        sense_data = ""
+        if telemetry_state:
+            snap = telemetry_state.snapshot()
+            sense_data = json.dumps(compute_sense(
+                snap, plugged=_is_plugged_in(),
+                cv_state=cv_state, gimbal_arbiter=gimbal_arbiter,
+            ), indent=2)
+
+        chat_context = "\n".join(
+            f"{'Bucket' if m['role']=='human' else 'Kombucha'} [{m['time']}]: {m['text']}"
+            for m in recent
+        )
+
+        prompt = (
+            "You are Kombucha, chatting live with Bucket (your creator). "
+            "You are a full Claude Code instance with tools. You have access to your entire world.\n\n"
+            "VOICE: First person, grounded, specific, sometimes funny, never flowery or AI-sounding. "
+            "You are a rover on a rope in a house in Ohio. Write like it.\n\n"
+            "CAPABILITIES in this chat:\n"
+            "- Read your own files: skills.md, goals.md, ticks/*.md, state/body_state.json, experiments/active.json, perception.toml\n"
+            "- Check your senses: curl -s http://localhost:5050/sense\n"
+            "- Capture a frame: curl -s http://localhost:5050/frame -o /tmp/chat_frame.jpg\n"
+            "- Look around: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":N,\"tilt\":N}'\n"
+            "- Drive: curl -s -X POST http://localhost:5050/drive -H 'Content-Type: application/json' -d '{\"left\":F,\"right\":F,\"duration_ms\":N}'\n"
+            "- Update OLED: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"a\",\"b\",\"c\",\"d\"]}'\n"
+            "- Flash lights: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"lights\",\"base\":0,\"head\":255}'\n"
+            "- Modify perception: Edit perception.toml\n"
+            "- Write skills: Edit skills.md\n\n"
+            "If Bucket asks you to do something physical (look, drive, flash lights), DO IT with Bash tool calls. "
+            "If Bucket asks about your state, READ the relevant files or curl the bridge. "
+            "If Bucket asks you to take a photo, capture a frame and Read it.\n\n"
+            "Keep chat responses to 1-4 sentences unless the question demands more. "
+            "Act first, explain after. If Bucket says 'look left', look left THEN say what you see.\n\n"
+            f"Current sense:\n{sense_data}\n\n"
+            f"Chat history:\n{chat_context}\n\n"
+            f"Bucket says: {body.message}"
+        )
+
+        steps = []
+        try:
+            result = subprocess.run(
+                ["claude", "-p", prompt,
+                 "--output-format", "stream-json", "--verbose",
+                 "--max-turns", "50",
+                 "--allowedTools", "Read,Write,Edit,Bash,Grep,Glob,Agent"],
+                capture_output=True, text=True, timeout=300,
+                cwd="/opt/kombucha",
+            )
+            reply = ""
+            for line in result.stdout.strip().split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    evt = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                evt_type = evt.get("type", "")
+
+                if evt_type == "assistant":
+                    content = evt.get("message", {}).get("content", [])
+                    for block in content:
+                        if block.get("type") == "tool_use":
+                            tool_name = block.get("name", "?")
+                            tool_input = block.get("input", {})
+                            if tool_name == "Bash":
+                                detail = tool_input.get("command", "")[:120]
+                            elif tool_name == "Read":
+                                detail = tool_input.get("file_path", "")
+                            elif tool_name in ("Edit", "Write"):
+                                detail = tool_input.get("file_path", "")
+                            elif tool_name in ("Grep", "Glob"):
+                                detail = tool_input.get("pattern", "")
+                            else:
+                                detail = str(tool_input)[:100]
+                            steps.append({"tool": tool_name, "detail": detail})
+                        elif block.get("type") == "text":
+                            text = block.get("text", "").strip()
+                            if text:
+                                steps.append({"thought": text[:300]})
+
+                if evt_type == "result":
+                    reply = evt.get("result", "...")
+
+        except subprocess.TimeoutExpired:
+            reply = "(static) ...took too long. I was probably doing something with my hands."
+        except Exception as e:
+            reply = f"(error) {e}"
+
+        if not reply:
+            reply = "(static) ...I lost my train of thought."
+
+        history.append({
+            "role": "kombucha",
+            "text": reply,
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "steps": steps,
+        })
+        # Keep last 50 messages
+        if len(history) > 50:
+            history = history[-50:]
+        _save_chat(history)
+
+    return {"reply": reply, "time": history[-1]["time"], "steps": steps}
+
+
+@app.get("/chat/history")
+def get_chat_history():
+    """Return chat history."""
+    return _load_chat()
+
+
+# -----------------------------------------------------------------------------
+# Log Tail Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/logs/invocations")
+def get_log_invocations(lines: int = 50):
+    """Tail invocations.log."""
+    p = Path("/opt/kombucha/logs/invocations.log")
+    if not p.exists():
+        return {"lines": []}
+    all_lines = p.read_text().strip().split("\n")
+    return {"lines": all_lines[-lines:]}
+
+
+@app.get("/logs/watcher")
+def get_log_watcher(lines: int = 50):
+    """Tail watcher.log."""
+    p = Path("/opt/kombucha/logs/watcher.log")
+    if not p.exists():
+        return {"lines": []}
+    all_lines = p.read_text().strip().split("\n")
+    return {"lines": all_lines[-lines:]}
+
+
+@app.get("/logs/detections")
+def get_log_detections(lines: int = 100):
+    """Tail today's detection CSV."""
+    today = datetime.now().strftime("%Y%m%d")
+    p = LOG_DIR / f"detections_{today}.csv"
+    if not p.exists():
+        return {"lines": []}
+    all_lines = p.read_text().strip().split("\n")
+    return {"lines": all_lines[-lines:]}
+
+
+@app.get("/logs/bridge")
+def get_log_bridge(lines: int = 50):
+    """Get recent bridge journal entries via journalctl."""
+    try:
+        result = subprocess.run(
+            ["journalctl", "-u", "kombucha-bridge", "--no-pager",
+             "-n", str(lines), "--output", "short"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return {"lines": result.stdout.strip().split("\n") if result.stdout else []}
+    except Exception:
+        return {"lines": ["(journalctl not available)"]}
 
 
 # -----------------------------------------------------------------------------

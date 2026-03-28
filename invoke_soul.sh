@@ -193,7 +193,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') $HOUR END $MODE exit=$EXIT_CODE" >> "$LOGFILE
 # -----------------------------------------------------------------------
 cd "$KOMBUCHA_DIR"
 if git rev-parse --git-dir > /dev/null 2>&1; then
-    git add -A ticks/ skills.md goals.md state/ experiments/ perception.toml mood_gestures.json faces.json 2>/dev/null
+    git add -A ticks/ skills.md goals.md state/ experiments/ perception.toml mood_gestures.json faces.json *.py 2>/dev/null
     CHANGES=$(git diff --cached --stat 2>/dev/null)
     if [ -n "$CHANGES" ]; then
         git commit -m "[wake $WAKE] $MODE tick — $(date '+%H:%M')" 2>/dev/null
