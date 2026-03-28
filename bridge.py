@@ -535,6 +535,8 @@ def post_action(action: Union[ActionModel, list[ActionModel]]):
             )
             state["pan_position"] = int(act_dict.get("pan", 0))
             state["tilt_position"] = int(act_dict.get("tilt", 0))
+            if cv_pipeline:
+                cv_pipeline.suppress_motion()
             return JSONResponse(content=result)
 
         tcodes = translate_action(act_dict, state)
