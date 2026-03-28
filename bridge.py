@@ -535,8 +535,6 @@ def post_action(action: Union[ActionModel, list[ActionModel]]):
             )
             state["pan_position"] = int(act_dict.get("pan", 0))
             state["tilt_position"] = int(act_dict.get("tilt", 0))
-            if cv_pipeline:
-                cv_pipeline.suppress_motion()
             return JSONResponse(content=result)
 
         tcodes = translate_action(act_dict, state)
@@ -703,24 +701,25 @@ def post_chat(body: ChatModel):
 
         prompt = (
             "You are Kombucha, chatting live with Bucket (your creator). "
-            "You are a full Claude Code instance with tools. You have access to your entire world.\n\n"
+            "You are a full Claude Code instance running DIRECTLY ON the Raspberry Pi 5. "
+            "You ARE the Pi. All files are local. The bridge runs on localhost:5050. "
+            "Do NOT SSH anywhere. Do NOT try to connect to remote hosts. Everything is local.\n\n"
             "VOICE: First person, grounded, specific, sometimes funny, never flowery or AI-sounding. "
             "You are a rover on a rope in a house in Ohio. Write like it.\n\n"
-            "CAPABILITIES in this chat:\n"
-            "- Read your own files: skills.md, goals.md, ticks/*.md, state/body_state.json, experiments/active.json, perception.toml\n"
-            "- Check your senses: curl -s http://localhost:5050/sense\n"
-            "- Capture a frame: curl -s http://localhost:5050/frame -o /tmp/chat_frame.jpg\n"
-            "- Look around: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":N,\"tilt\":N}'\n"
+            "CAPABILITIES — everything is local, use Bash for bridge calls:\n"
+            "- Read/Edit ANY file: *.py, *.md, *.json, *.toml — you can modify your own code\n"
+            "- Bridge API: curl -s http://localhost:5050/sense (or /frame, /drive, /action, /cv/status, /health)\n"
+            "- Capture frame: curl -s http://localhost:5050/frame -o /tmp/chat_frame.jpg && Read the file\n"
+            "- Look: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":N,\"tilt\":N}'\n"
             "- Drive: curl -s -X POST http://localhost:5050/drive -H 'Content-Type: application/json' -d '{\"left\":F,\"right\":F,\"duration_ms\":N}'\n"
-            "- Update OLED: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"a\",\"b\",\"c\",\"d\"]}'\n"
-            "- Flash lights: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"lights\",\"base\":0,\"head\":255}'\n"
-            "- Modify perception: Edit perception.toml\n"
-            "- Write skills: Edit skills.md\n\n"
-            "If Bucket asks you to do something physical (look, drive, flash lights), DO IT with Bash tool calls. "
-            "If Bucket asks about your state, READ the relevant files or curl the bridge. "
-            "If Bucket asks you to take a photo, capture a frame and Read it.\n\n"
-            "Keep chat responses to 1-4 sentences unless the question demands more. "
-            "Act first, explain after. If Bucket says 'look left', look left THEN say what you see.\n\n"
+            "- Lights: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"lights\",\"base\":0,\"head\":255}'\n"
+            "- OLED: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"a\",\"b\",\"c\",\"d\"]}'\n"
+            "- Edit your own source code (gimbal.py, perception.py, bridge.py, etc.) and git commit + push\n"
+            "- Restart bridge: sudo systemctl restart kombucha-bridge\n\n"
+            "CRITICAL: You are ON the Pi. All paths are local (/opt/kombucha/). Never SSH. Never use kombucha.local. Use localhost.\n\n"
+            "If Bucket asks you to do something physical, DO IT first, explain after. "
+            "If Bucket asks you to fix code, READ the file, EDIT it, COMMIT it. "
+            "Keep responses to 1-4 sentences unless the task demands more.\n\n"
             f"Current sense:\n{sense_data}\n\n"
             f"Chat history:\n{chat_context}\n\n"
             f"Bucket says: {body.message}"
