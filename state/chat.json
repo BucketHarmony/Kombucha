@@ -8,5 +8,55 @@
     "role": "kombucha",
     "text": "\n\nYeah, I hear you. Battery's at 95%, gimbal's idle, nobody in front of me. What's up?",
     "time": "21:18:32"
+  },
+  {
+    "role": "human",
+    "text": "Testing 123.  This is Bucket.  How are you doing?",
+    "time": "21:26:31"
+  },
+  {
+    "role": "kombucha",
+    "text": "Doing fine. 95% battery, 21 meters on the odometer today, nobody around right now. Roll sensor says I'm tilted 120 degrees which seems dramatic but I'm still upright so who knows. Good to hear from you, Bucket.",
+    "time": "21:26:40"
+  },
+  {
+    "role": "human",
+    "text": "Any questions?",
+    "time": "21:26:56"
+  },
+  {
+    "role": "kombucha",
+    "text": "Yeah, one \u2014 that roll sensor reading of -120.5 degrees. Is that real or is the IMU just having a moment? Because I don't feel upside down. Also, what's \"cls28\" in my presence data? Something's been sitting in front of me for 100 seconds and I don't know what it is.",
+    "time": "21:27:05"
+  },
+  {
+    "role": "human",
+    "text": "Look left and tell me what you see",
+    "time": "21:54:07"
+  },
+  {
+    "role": "kombucha",
+    "text": "To my left: an open doorway into what looks like a bathroom or small room \u2014 I can see light blue walls and a patterned curtain or wallpaper through it. In front of the doorway there's a mess of cables on the hardwood floor (probably mine), a power brick, and what looks like a yellow crate next to a black Pelican case. There's a big wooden cabinet or armoire on the right side of the frame, and the walls are that dark red color. Classic Ohio house vibes.\n\nAlso, instinct just grabbed my gimbal when I tried to center back \u2014 something must have caught its attention.",
+    "time": "21:54:35"
+  },
+  {
+    "role": "human",
+    "text": "Hello Kombucha!  Can you do apan for me?",
+    "time": "22:01:57"
+  },
+  {
+    "role": "kombucha",
+    "text": "Here's the full sweep:\n\n**Left (-90\u00b0):** The bathroom doorway again \u2014 blue walls, patterned curtain visible through it. Yellow crate and black Pelican case on the floor, cables everywhere, big wooden armoire to the right of the door.\n\n**Center (0\u00b0):** I'm staring straight into what I think is a barrel or some kind of large wooden cylinder. It's filling most of my frame. That might be the \"cls28\" mystery object \u2014 I'm parked right next to it.\n\n**Right (+90\u00b0):** Past the barrel, I can see more of the room \u2014 orange/red walls, a big wooden cabinet or wardrobe, some kind of white folding tray table, wires running along the floor, and what looks like a mirror or framed picture leaning against the wall. Looks like a hallway or passage deeper into the house.\n\nInstinct kept grabbing my gimbal during the sweep \u2014 it queued two of my look commands. Something's catching its eye but I don't see any faces or motion in these frames. Might be phantom detections.",
+    "time": "22:02:57"
+  },
+  {
+    "role": "human",
+    "text": "I suspect that when you cause motion, the motion detector wakes up.  Consider how you guys might share the action bus together.  Create a markdown file with your ideas.",
+    "time": "22:05:41"
+  },
+  {
+    "role": "kombucha",
+    "text": "(static) ...I seem to be having trouble thinking right now.",
+    "time": "22:05:58"
   }
 ]
