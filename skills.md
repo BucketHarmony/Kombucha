@@ -109,3 +109,6 @@ Accumulated physical knowledge from operating in the world.
 - 300ms drives produce zero motion — all startup lag. Minimum effective drive duration: 600ms.
 - Spin wiggle at 20.4m session distance: right wheel restricted even for rotational movements. Cable catches on right side regardless of drive direction.
 - Need social gestures in mood_gestures.json: greeting_known, greeting_unknown, goodbye, cat_spotted, startled. Current file has no social gestures.
+- Mirror event: instinct tracks the person holding a mirror (not the reflection). Rover sees its own chassis in the reflection — black body, yellow frame, gimbal, cables.
+- Drive symmetry at 20.7m session distance can be excellent (0.96-1.01) — cable routing/position matters more than absolute distance for wheel restriction.
+- In-place turn rate: ~36 degrees per 1000ms at L=1.04 R=-1.04 on hardwood (measured 25deg in 700ms).
