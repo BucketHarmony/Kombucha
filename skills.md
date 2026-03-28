@@ -93,6 +93,7 @@ Accumulated physical knowledge from operating in the world.
 - Cable catch-release zone: 7-9m. Speed spikes (wsr drops to 0.0-0.25, then snaps to 1.7-2.0) on right wheel. Odometry becomes asymmetric (ratio 1.1-2.3).
 - Previous cable estimates (3.3m, 4.5m) were wildly wrong. Route matters — cable slack depends on path taken, not just straight-line distance.
 - 180-degree turn: L=1.3 R=-1.3 for 1800ms. Produces L=187 R=-190, very symmetric.
+- **Lateral movement at cable limit**: Moving perpendicular to cable tension (orbiting the anchor point) partially bypasses the hard lock. Session distance 20.2m achieved vs 20.0m hard limit when pulling straight. Cable still increasingly restricts right wheel — asymmetry ratio degrades to 1.89+ on later drives. Strategy: turn to swing along arc, not pull against radius.
 - USB camera disconnects under cable strain at 7m+. Symptoms: /dev/video0 or /dev/video1 disappears, bridge serves stale cached frame (identical byte count). Fix: USB unbind/rebind (`echo 3-2 > /sys/bus/usb/drivers/usb/unbind` then `bind`) + bridge restart.
 - Minimum drive duration: 800ms. At 500ms, startup lag consumes entire drive — zero motion. 600ms marginal.
 
