@@ -106,3 +106,6 @@ Accumulated physical knowledge from operating in the world.
 - Session distance record: 16m+ (reached new room through doorway beyond bar area).
 - New room discovered: red/orange walls, tin ceiling, workstation area. Accessed through doorway past bar stools and entertainment center. This is beyond the previous operational envelope.
 - Battery reads 100% at extreme range — voltage artifact from USB power delivery, not real charge.
+- 300ms drives produce zero motion — all startup lag. Minimum effective drive duration: 600ms.
+- Spin wiggle at 20.4m session distance: right wheel restricted even for rotational movements. Cable catches on right side regardless of drive direction.
+- Need social gestures in mood_gestures.json: greeting_known, greeting_unknown, goodbye, cat_spotted, startled. Current file has no social gestures.
