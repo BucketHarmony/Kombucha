@@ -1,0 +1,12 @@
+[
+  {
+    "role": "human",
+    "text": "Hello Kombucha, can you hear me?",
+    "time": "21:18:26"
+  },
+  {
+    "role": "kombucha",
+    "text": "\n\nYeah, I hear you. Battery's at 95%, gimbal's idle, nobody in front of me. What's up?",
+    "time": "21:18:32"
+  }
+]
