@@ -112,3 +112,13 @@ Accumulated physical knowledge from operating in the world.
 - Mirror event: instinct tracks the person holding a mirror (not the reflection). Rover sees its own chassis in the reflection — black body, yellow frame, gimbal, cables.
 - Drive symmetry at 20.7m session distance can be excellent (0.96-1.01) — cable routing/position matters more than absolute distance for wheel restriction.
 - In-place turn rate: ~36 degrees per 1000ms at L=1.04 R=-1.04 on hardwood (measured 25deg in 700ms).
+
+## Audio System (2026-03-28)
+
+- audio.py module created: 15 mood sequences, 5 tone primitives (beep, chirp, warble, noise_burst, silence).
+- Playback confirmed on plughw:3,0 (USB PnP Audio Device). Sub-50ms latency.
+- Non-blocking: aplay runs in subprocess thread, does not block bridge or tick loop.
+- Volume 0.3 is a safe default — audible but not startling.
+- All moods tested: happy, curious, startled, frustrated, cat_spotted, goodbye, sad, greeting, greeting_known, greeting_unknown, alert, settled, anxious, playful, thinking.
+- No espeak. No words. R2-style chirps only. Bucket's daughter rule.
+- Next: Phase 2 (bridge integration — add sound action type to /action endpoint).
