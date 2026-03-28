@@ -58,5 +58,15 @@
     "role": "kombucha",
     "text": "(static) ...I seem to be having trouble thinking right now.",
     "time": "22:05:58"
+  },
+  {
+    "role": "human",
+    "text": "I suspect that when you cause motion, the motion detector wakes up. Consider how you guys might share the action bus together. Create a markdown file with your ideas.",
+    "time": "22:11:14"
+  },
+  {
+    "role": "kombucha",
+    "text": "...",
+    "time": "22:12:13"
   }
 ]
