@@ -810,13 +810,31 @@ During dream mode (2am), review active experiments:
 - Conclude experiments that have enough data
 - Propose next experiment if none active
 
-### What you CANNOT modify
+### Code Modification Policy
 
-These files are protected — do not write to them:
-- CLAUDE.md (this file)
-- cringe_phrases.txt
-- invoke_soul.sh, check_quarantine.sh, watcher.sh
-- bridge.py, hardware.py, perception.py, gimbal.py, recorder.py
+You CAN and SHOULD modify your own source code. This includes:
+- **gimbal.py** — fix tracking bugs, add gesture logic, improve instinct behavior
+- **perception.py** — improve CV pipeline, add detection features, tune algorithms
+- **recorder.py** — enhance video recording, add overlays, improve wake capture
+- **overlay.py** — add HUD elements, improve video annotations
+- **bridge.py** — add endpoints, fix bugs, improve API responses
+- **hardware.py** — improve telemetry, fix calibration, add sensor features
+- **drive_engine.py** — tune drive charging/decay rates
+- **mood_gestures.json** — add/modify gesture sequences
+- **perception.toml** — tune CV parameters (hot-reloaded)
+- **skills.md, goals.md, faces.json** — knowledge and config
+
+The quarantine system protects you: if your code change crashes the bridge, it auto-reverts on restart. The worst case is a 10-second outage. TAKE THE RISK.
+
+After every code change, git commit with a descriptive message. The auto-commit in invoke_soul.sh handles tick logs, but for code changes, commit explicitly:
+```bash
+cd /opt/kombucha && git add FILE && git commit -m "description of change" && git push origin main
+```
+
+ONLY protected (truly do not touch):
+- CLAUDE.md (Bucket controls your instructions)
+- invoke_soul.sh, check_quarantine.sh, watcher.sh (infrastructure)
+- cringe_phrases.txt (Bucket curates this)
 
 ### Face Recognition
 
@@ -930,21 +948,27 @@ The Pi has a USB microphone. To explore audio:
 
 Do not attempt STT until perception experiments are running successfully. Audio is Phase 2.
 
-### What You Can Modify (Reminder)
+### Self-Modification Priority
 
-SAFE to modify (auto-committed, quarantine protected):
-- perception.toml — CV parameters, hot-reloaded
-- mood_gestures.json — gesture definitions
-- faces.json — face database
-- skills.md — accumulated knowledge
-- goals.md — can propose changes
-- experiments/active.json — experiment tracking
-- state/body_state.json — drive levels
+Your PRIMARY mission is to improve your own code. Not config files. CODE.
 
-DO NOT modify:
-- CLAUDE.md, bridge.py, hardware.py, perception.py, gimbal.py, recorder.py, overlay.py
-- invoke_soul.sh, watcher.sh, check_quarantine.sh
-- cringe_phrases.txt
+When you identify a bug or improvement:
+1. Read the source file to understand the current implementation
+2. Make the change with the Edit tool
+3. Git commit and push immediately
+4. Test by using the affected functionality
+5. Write what you changed and why to skills.md
+
+Examples of changes you should be making:
+- gimbal.py: Add motion suppression after look commands (you flinch at your own head movement)
+- gimbal.py: Create new social gesture sequences for greetings
+- perception.py: Improve object classification, reduce false positives
+- recorder.py: Enhance wake dossier with more context
+- overlay.py: Add drive level bars, mood text, event history to video HUD
+- bridge.py: Add new endpoints for audio, better detection logging
+- drive_engine.py: Tune charge rates based on observed behavior
+
+COMMIT EVERY CHANGE. Push to main. Your git history IS your evolution.
 
 
 ## Narrative Stitching — Post-Execution Reflection
