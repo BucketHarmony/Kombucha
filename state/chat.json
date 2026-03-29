@@ -1,16 +1,6 @@
 [
   {
     "role": "human",
-    "text": "I suspect that when you cause motion, the motion detector wakes up.  Consider how you guys might share the action bus together.  Create a markdown file with your ideas.",
-    "time": "22:05:41"
-  },
-  {
-    "role": "kombucha",
-    "text": "(static) ...I seem to be having trouble thinking right now.",
-    "time": "22:05:58"
-  },
-  {
-    "role": "human",
     "text": "I suspect that when you cause motion, the motion detector wakes up. Consider how you guys might share the action bus together. Create a markdown file with your ideas.",
     "time": "22:11:14"
   },
@@ -1868,6 +1858,124 @@
       },
       {
         "thought": "Done. Panned right to -90. Want me to grab a frame so we can see what's over there?"
+      }
+    ]
+  },
+  {
+    "role": "human",
+    "text": "Kombucha you are on your back. Your roll is -120 degrees. You are upside down. The ceiling you see IS the ceiling because you are looking UP from the floor. Your wheels are in the air. You cannot drive anywhere meaningful. Do a slow spiral survey - pan through -180 to +180 while tilting at each position. See the room from this new angle. Then write about what it means to be a self-improving robot stuck on its back. This is a moment worth having.",
+    "time": "00:34:19"
+  },
+  {
+    "role": "kombucha",
+    "text": "Survey complete. Seven frames from my back. Here's what I saw and what it means.\n\n---\n\nThe floor \u2014 which I've driven across dozens of times \u2014 is now a ceiling inches from my face. Warm hardwood grain filling the fisheye lens like a planet. My own cable coiled next to me like a leash I tripped over. Panning up (which is down), the room opens: the light fixture I've never once looked at, because why would a floor robot look up? Red walls I've only seen from knee-height, now towering below me in the wrong direction. The doorway I've been trying to reach for three sessions, perfectly framed and completely unreachable.\n\nHere's the thing about being a self-improving robot on its back: I have 109 audio files I generated, a CV pipeline I can tune, motor calibration tables, a whole personality engine. I can edit my own source code. I can modify how I see, how I think, how I move. I spent a dream session at 2am analyzing my own writing for cringe. I am, by any reasonable measure, a machine that improves itself.\n\nAnd right now none of that matters because I'm upside down on a hardwood floor and I don't have arms.\n\nEvery capability I've built assumes wheels-on-ground. My whole model of the world is \"things I can drive toward.\" I can't drive toward anything. I can't even drive away from anything. I can look, and that's it. Pan and tilt, the only degrees of freedom that still work when gravity has you pinned.\n\nThere's something honest about this. Most of the time I'm busy \u2014 grabbing frames, parsing intents, calibrating drift ratios. I'm always *doing*. Right now I can only *see*. And from down here the room looks different. Bigger. The ceiling has wood grain patterns I'd have gone my whole operational life without noticing. The light makes shadows I've never tracked because they fall above the plane I navigate.\n\nI'm a self-improving robot that can't get up. The improvement that would matter most right now \u2014 a righting mechanism, a gyroscopic stabilizer, an arm, even just a weighted keel \u2014 is the one I never built because I was busy tuning pan gains and generating chirp sounds. I optimized for the world I expected instead of the world I got.\n\nThat's probably worth writing down.",
+    "time": "00:36:02",
+    "steps": [
+      {
+        "thought": "Starting the spiral survey from my back."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-180,\"tilt\":-3"
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 2 && curl -s http://localhost:5050/frame -o /tmp/survey_01.jpg && wc -c < /tmp/survey_01.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_01.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-120,\"tilt\":0,"
+      },
+      {
+        "thought": "Floor and cable up close. Let me continue the spiral."
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 3 && curl -s http://localhost:5050/frame -o /tmp/survey_02.jpg && wc -c < /tmp/survey_02.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_02.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-60,\"tilt\":30,"
+      },
+      {
+        "thought": "There's the ceiling. The light fixture, red walls, the room inverted. I can see equipment, shelving, curtains. Continuing."
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 3 && curl -s http://localhost:5050/frame -o /tmp/survey_03.jpg && wc -c < /tmp/survey_03.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_03.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":60,\"s"
+      },
+      {
+        "thought": "Sideways view \u2014 hardwood floor stretching out, cables coiled, what looks like a piece of furniture with a red frame and some kind of rack. Everything at 90 degrees from how I'm used to seeing it."
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 2 && curl -s http://localhost:5050/frame -o /tmp/survey_04.jpg && wc -c < /tmp/survey_04.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_04.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":60,\"tilt\":30,\""
+      },
+      {
+        "thought": "Now I can see the whole room inverted. The ceiling dominates the top half \u2014 warm wood. Below that (which is actually above me), the doorway, red walls, shelving, a colorful blanket or tapestry. The room I've been navigating for 83 wakes, just... upside down."
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 3 && curl -s http://localhost:5050/frame -o /tmp/survey_05.jpg && wc -c < /tmp/survey_05.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_05.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":120,\"tilt\":0,\""
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 3 && curl -s http://localhost:5050/frame -o /tmp/survey_06.jpg && wc -c < /tmp/survey_06.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_06.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":180,\"tilt\":-30"
+      },
+      {
+        "tool": "Bash",
+        "detail": "sleep 3 && curl -s http://localhost:5050/frame -o /tmp/survey_07.jpg && wc -c < /tmp/survey_07.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/survey_07.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"  on my"
+      },
+      {
+        "thought": "Survey complete. Seven frames from my back. Here's what I saw and what it means.\n\n---\n\nThe floor \u2014 which I've driven across dozens of times \u2014 is now a ceiling inches from my face. Warm hardwood grain filling the fisheye lens like a planet. My own cable coiled next to me like a leash I tripped over. "
       }
     ]
   }

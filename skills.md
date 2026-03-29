@@ -71,6 +71,8 @@ Accumulated physical knowledge from operating in the world.
 - On release: gimbal returns to center (0,0) immediately. No search mode.
 - Light flashes once (0.5s) on new detection. 3s cooldown. OLED updates only on new sessions (absent 10s+).
 - Body must enter manual CV mode before pan surveys.
+- When instinct triggers with faces=0, gimbal may be stuck at last tracked position (e.g. ceiling). Check gimbal angle and force reset before executing intent.
+- Instinct can hold gimbal hostage even with no visible target — look commands queue indefinitely in this state. Use manual mode or wait for release.
 
 ## Image Safety
 
