@@ -1,7 +1,8 @@
 {
-  "_doc": "Mood gesture sequences. Each gesture is an array of steps. Step format: [type, ...params, delay_ms]. Types: look(pan,tilt,speed,accel,delay), light(base,head,delay), drive(left,right,duration_ms,delay), wait(delay).",
+  "_doc": "Mood gesture sequences. Each gesture is an array of steps. Step format: [type, ...params, delay_ms]. Types: look(pan,tilt,speed,accel,delay), light(base,head,delay), drive(left,right,duration_ms,delay), sound(mood,delay), wait(delay).",
 
   "settled": [
+    ["sound", "settled", 100],
     ["look", 0, 8, 30, 8, 400],
     ["look", 0, -5, 30, 8, 400],
     ["look", 0, 0, 30, 8, 300]
@@ -63,6 +64,7 @@
     ["look", 0, 0, 25, 8, 400]
   ],
   "contemplative": [
+    ["sound", "thinking", 100],
     ["look", 0, 40, 15, 5, 1000],
     ["wait", 800],
     ["look", 0, 0, 20, 6, 500]
@@ -104,6 +106,7 @@
     ["light", 0, 0, 100]
   ],
   "jolted": [
+    ["sound", "startled", 50],
     ["look", -50, 0, 150, 30, 250],
     ["look", 50, 0, 150, 30, 250],
     ["look", 0, 25, 120, 25, 300],
@@ -114,6 +117,7 @@
     ["look", 0, 0, 60, 12, 400]
   ],
   "restless": [
+    ["sound", "anxious", 50],
     ["look", 8, -3, 80, 15, 100],
     ["look", -12, 5, 80, 15, 100],
     ["look", 5, -8, 80, 15, 100],
@@ -129,6 +133,7 @@
     ["look", 0, 0, 40, 10, 300]
   ],
   "frustrated": [
+    ["sound", "frustrated", 100],
     ["drive", 1.04, 1.08, 400, 200],
     ["drive", -1.04, -1.08, 300, 200],
     ["look", 0, -10, 100, 20, 200],
@@ -187,6 +192,7 @@
     ["look", 0, 0, 30, 8, 300]
   ],
   "prowling": [
+    ["sound", "alert", 100],
     ["drive", 1.04, 1.08, 600, 200],
     ["look", -60, 0, 60, 12, 300],
     ["drive", 1.04, 1.08, 600, 200],
@@ -204,6 +210,7 @@
     ["look", 0, 0, 30, 8, 300]
   ],
   "curious": [
+    ["sound", "curious", 100],
     ["look", -40, 10, 50, 10, 400],
     ["drive", 1.04, 1.08, 800, 300],
     ["look", 0, -10, 40, 10, 400],
@@ -219,12 +226,14 @@
     ["look", 0, 0, 60, 12, 200]
   ],
   "retreating": [
+    ["sound", "sad", 100],
     ["drive", -1.04, -1.08, 800, 300],
     ["look", -20, 5, 30, 8, 400],
     ["drive", -1.04, -1.08, 600, 300],
     ["look", 0, 0, 30, 8, 300]
   ],
   "exploring": [
+    ["sound", "curious", 100],
     ["look", -60, 0, 40, 10, 400],
     ["drive", 1.04, 1.08, 1000, 300],
     ["look", 0, 0, 40, 10, 300],

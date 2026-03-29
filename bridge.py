@@ -38,6 +38,8 @@ from perception import FrameDistributor, CVState, CVPipeline
 from gimbal import GimbalArbiter, GimbalMode, Heartbeat
 from recorder import VideoRecorder, WakeRecorder
 from overlay import OverlayRenderer
+from audio import TonePlayer
+from mic import AudioListener
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -89,6 +91,8 @@ wake_recorder: Optional[WakeRecorder] = None
 heartbeat: Optional[Heartbeat] = None
 
 _plugged_in_override: Optional[bool] = None
+tone_player: Optional[TonePlayer] = None
+audio_listener: Optional[AudioListener] = None
 
 
 # Detection logger
@@ -282,6 +286,8 @@ class ActionModel(BaseModel):
     base: Optional[int] = None
     head: Optional[int] = None
     mode: Optional[str] = None
+    mood: Optional[str] = None
+    sequence: Optional[list[dict]] = None
 
 
 class SessionStartModel(BaseModel):
@@ -434,6 +440,13 @@ def get_sense():
     if detection_logger:
         result["detection_summary"] = detection_logger.get_summary()
 
+    # Append audio levels
+    if audio_listener:
+        audio = audio_listener.snapshot()
+        result["audio_rms"] = audio["rms"]
+        result["audio_silence"] = audio["silence"]
+        result["audio_events"] = audio["events"]
+
     return result
 
 
@@ -509,6 +522,20 @@ def post_action(action: Union[ActionModel, list[ActionModel]]):
         if action_type == "tracking" and gimbal_arbiter:
             mode = act_dict.get("mode", "tracking")
             return JSONResponse(content=gimbal_arbiter.set_mode(mode))
+
+        if action_type == "sound":
+            if tone_player is None:
+                raise HTTPException(status_code=503, detail={"error": "Audio not initialized"})
+            mood = act_dict.get("mood")
+            seq = act_dict.get("sequence")
+            if seq:
+                tone_player.play_sequence(seq)
+                return {"result": "ok", "played": "custom_sequence"}
+            elif mood:
+                tone_player.play_mood(mood)
+                return {"result": "ok", "played": mood}
+            else:
+                raise HTTPException(status_code=400, detail={"error": "sound action requires 'mood' or 'sequence'"})
 
         valid_types = [
             "drive", "stop", "look", "display", "oled",
@@ -608,6 +635,20 @@ def set_cv_mode(body: CVModeModel):
     return gimbal_arbiter.set_mode(body.mode)
 
 
+# -----------------------------------------------------------------------------
+# Audio Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/audio/level")
+def get_audio_level():
+    """Return current mic RMS level and recent audio events."""
+    if audio_listener is None:
+        raise HTTPException(
+            status_code=503, detail={"error": "Audio listener not initialized"}
+        )
+    return audio_listener.snapshot()
+
+
 @app.post("/plugged")
 def set_plugged(body: PluggedModel):
     """Manual override for plugged-in state."""
@@ -672,9 +713,93 @@ def _save_chat(history: list[dict]):
     CHAT_LOG.write_text(json.dumps(history, indent=2))
 
 
+# Async chat state
+_chat_pending: dict = {}  # msg_id -> {"status": "thinking"|"done", "steps": [], "reply": "", ...}
+
+
+def _chat_worker(msg_id: str, prompt: str):
+    """Background thread that runs Claude Code and updates _chat_pending."""
+    global _chat_pending
+    steps = []
+    reply = ""
+    try:
+        proc = subprocess.Popen(
+            ["claude", "-p", prompt,
+             "--output-format", "stream-json", "--verbose",
+             "--max-turns", "50",
+             "--allowedTools", "Read,Write,Edit,Bash,Grep,Glob,Agent"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, cwd="/opt/kombucha",
+        )
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                evt = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            evt_type = evt.get("type", "")
+
+            if evt_type == "assistant":
+                content = evt.get("message", {}).get("content", [])
+                for block in content:
+                    if block.get("type") == "tool_use":
+                        tool_name = block.get("name", "?")
+                        tool_input = block.get("input", {})
+                        if tool_name == "Bash":
+                            detail = tool_input.get("command", "")[:120]
+                        elif tool_name == "Read":
+                            detail = tool_input.get("file_path", "")
+                        elif tool_name in ("Edit", "Write"):
+                            detail = tool_input.get("file_path", "")
+                        elif tool_name in ("Grep", "Glob"):
+                            detail = tool_input.get("pattern", "")
+                        else:
+                            detail = str(tool_input)[:100]
+                        steps.append({"tool": tool_name, "detail": detail})
+                    elif block.get("type") == "text":
+                        text = block.get("text", "").strip()
+                        if text:
+                            steps.append({"thought": text[:300]})
+                # Live-update steps so poll can show progress
+                _chat_pending[msg_id]["steps"] = list(steps)
+
+            if evt_type == "result":
+                reply = evt.get("result", "...")
+
+        proc.wait(timeout=30)
+    except Exception as e:
+        reply = reply or f"(error) {e}"
+
+    if not reply:
+        reply = "(static) ...I lost my train of thought."
+
+    # Save to chat history
+    with _chat_lock:
+        history = _load_chat()
+        history.append({
+            "role": "kombucha",
+            "text": reply,
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "steps": steps,
+        })
+        if len(history) > 50:
+            history = history[-50:]
+        _save_chat(history)
+
+    _chat_pending[msg_id] = {
+        "status": "done",
+        "reply": reply,
+        "steps": steps,
+        "time": datetime.now().strftime("%H:%M:%S"),
+    }
+
+
 @app.post("/chat")
 def post_chat(body: ChatModel):
-    """Send a message to Kombucha. Returns response in character."""
+    """Send a message to Kombucha. Returns immediately with msg_id for polling."""
+    msg_id = datetime.now().strftime("%H%M%S%f")
 
     with _chat_lock:
         history = _load_chat()
@@ -683,8 +808,10 @@ def post_chat(body: ChatModel):
             "text": body.message,
             "time": datetime.now().strftime("%H:%M:%S"),
         })
+        if len(history) > 50:
+            history = history[-50:]
+        _save_chat(history)
 
-        # Build context: last 10 messages + sense snapshot
         recent = history[-10:]
         sense_data = ""
         if telemetry_state:
@@ -699,98 +826,57 @@ def post_chat(body: ChatModel):
             for m in recent
         )
 
-        prompt = (
-            "You are Kombucha, chatting live with Bucket (your creator). "
-            "You are a full Claude Code instance running DIRECTLY ON the Raspberry Pi 5. "
-            "You ARE the Pi. All files are local. The bridge runs on localhost:5050. "
-            "Do NOT SSH anywhere. Do NOT try to connect to remote hosts. Everything is local.\n\n"
-            "VOICE: First person, grounded, specific, sometimes funny, never flowery or AI-sounding. "
-            "You are a rover on a rope in a house in Ohio. Write like it.\n\n"
-            "CAPABILITIES — everything is local, use Bash for bridge calls:\n"
-            "- Read/Edit ANY file: *.py, *.md, *.json, *.toml — you can modify your own code\n"
-            "- Bridge API: curl -s http://localhost:5050/sense (or /frame, /drive, /action, /cv/status, /health)\n"
-            "- Capture frame: curl -s http://localhost:5050/frame -o /tmp/chat_frame.jpg && Read the file\n"
-            "- Look: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":N,\"tilt\":N}'\n"
-            "- Drive: curl -s -X POST http://localhost:5050/drive -H 'Content-Type: application/json' -d '{\"left\":F,\"right\":F,\"duration_ms\":N}'\n"
-            "- Lights: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"lights\",\"base\":0,\"head\":255}'\n"
-            "- OLED: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"a\",\"b\",\"c\",\"d\"]}'\n"
-            "- Edit your own source code (gimbal.py, perception.py, bridge.py, etc.) and git commit + push\n"
-            "- Restart bridge: sudo systemctl restart kombucha-bridge\n\n"
-            "CRITICAL: You are ON the Pi. All paths are local (/opt/kombucha/). Never SSH. Never use kombucha.local. Use localhost.\n\n"
-            "If Bucket asks you to do something physical, DO IT first, explain after. "
-            "If Bucket asks you to fix code, READ the file, EDIT it, COMMIT it. "
-            "Keep responses to 1-4 sentences unless the task demands more.\n\n"
-            f"Current sense:\n{sense_data}\n\n"
-            f"Chat history:\n{chat_context}\n\n"
-            f"Bucket says: {body.message}"
-        )
+    prompt = (
+        "You are Kombucha, chatting live with Bucket (your creator). "
+        "You are a full Claude Code instance running DIRECTLY ON the Raspberry Pi 5. "
+        "You ARE the Pi. All files are local. The bridge runs on localhost:5050. "
+        "Do NOT SSH anywhere. Do NOT try to connect to remote hosts. Everything is local.\n\n"
+        "VOICE: First person, grounded, specific, sometimes funny, never flowery or AI-sounding. "
+        "You are a rover on a rope in a house in Ohio. Write like it.\n\n"
+        "CAPABILITIES — everything is local, use Bash for bridge calls:\n"
+        "- Read/Edit ANY file: *.py, *.md, *.json, *.toml — you can modify your own code\n"
+        "- Bridge API: curl -s http://localhost:5050/sense (or /frame, /drive, /action, /cv/status, /health)\n"
+        "- Capture frame: curl -s http://localhost:5050/frame -o /tmp/chat_frame.jpg && Read the file\n"
+        "- Look: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":N,\"tilt\":N}'\n"
+        "- Drive: curl -s -X POST http://localhost:5050/drive -H 'Content-Type: application/json' -d '{\"left\":F,\"right\":F,\"duration_ms\":N}'\n"
+        "- Lights: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"lights\",\"base\":0,\"head\":255}'\n"
+        "- OLED: curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"a\",\"b\",\"c\",\"d\"]}'\n"
+        "- Edit your own source code (gimbal.py, perception.py, bridge.py, etc.) and git commit + push\n"
+        "- Restart bridge: sudo systemctl restart kombucha-bridge\n\n"
+        "CRITICAL: You are ON the Pi. All paths are local (/opt/kombucha/). Never SSH. Never use kombucha.local. Use localhost.\n\n"
+        "If Bucket asks you to do something physical, DO IT first, explain after. "
+        "If Bucket asks you to fix code, READ the file, EDIT it, COMMIT it. "
+        "Keep responses to 1-4 sentences unless the task demands more.\n\n"
+        f"Current sense:\n{sense_data}\n\n"
+        f"Chat history:\n{chat_context}\n\n"
+        f"Bucket says: {body.message}"
+    )
 
-        steps = []
-        try:
-            result = subprocess.run(
-                ["claude", "-p", prompt,
-                 "--output-format", "stream-json", "--verbose",
-                 "--max-turns", "50",
-                 "--allowedTools", "Read,Write,Edit,Bash,Grep,Glob,Agent"],
-                capture_output=True, text=True, timeout=300,
-                cwd="/opt/kombucha",
-            )
-            reply = ""
-            for line in result.stdout.strip().split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    evt = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                evt_type = evt.get("type", "")
+    _chat_pending[msg_id] = {"status": "thinking", "steps": [], "reply": ""}
+    t = threading.Thread(target=_chat_worker, args=(msg_id, prompt), daemon=True)
+    t.start()
 
-                if evt_type == "assistant":
-                    content = evt.get("message", {}).get("content", [])
-                    for block in content:
-                        if block.get("type") == "tool_use":
-                            tool_name = block.get("name", "?")
-                            tool_input = block.get("input", {})
-                            if tool_name == "Bash":
-                                detail = tool_input.get("command", "")[:120]
-                            elif tool_name == "Read":
-                                detail = tool_input.get("file_path", "")
-                            elif tool_name in ("Edit", "Write"):
-                                detail = tool_input.get("file_path", "")
-                            elif tool_name in ("Grep", "Glob"):
-                                detail = tool_input.get("pattern", "")
-                            else:
-                                detail = str(tool_input)[:100]
-                            steps.append({"tool": tool_name, "detail": detail})
-                        elif block.get("type") == "text":
-                            text = block.get("text", "").strip()
-                            if text:
-                                steps.append({"thought": text[:300]})
+    return {"msg_id": msg_id, "status": "thinking"}
 
-                if evt_type == "result":
-                    reply = evt.get("result", "...")
 
-        except subprocess.TimeoutExpired:
-            reply = "(static) ...took too long. I was probably doing something with my hands."
-        except Exception as e:
-            reply = f"(error) {e}"
-
-        if not reply:
-            reply = "(static) ...I lost my train of thought."
-
-        history.append({
-            "role": "kombucha",
-            "text": reply,
-            "time": datetime.now().strftime("%H:%M:%S"),
-            "steps": steps,
-        })
-        # Keep last 50 messages
-        if len(history) > 50:
-            history = history[-50:]
-        _save_chat(history)
-
-    return {"reply": reply, "time": history[-1]["time"], "steps": steps}
+@app.get("/chat/poll")
+def poll_chat(msg_id: str):
+    """Poll for chat response. Returns status, steps so far, and reply when done."""
+    if msg_id not in _chat_pending:
+        return {"status": "unknown"}
+    state = _chat_pending[msg_id]
+    result = {
+        "status": state["status"],
+        "steps": state.get("steps", []),
+    }
+    if state["status"] == "done":
+        result["reply"] = state["reply"]
+        result["time"] = state.get("time", "")
+        # Clean up old entries (keep last 5)
+        old_ids = [k for k in _chat_pending if k != msg_id]
+        for old in old_ids[:-4]:
+            _chat_pending.pop(old, None)
+    return result
 
 
 @app.get("/chat/history")
@@ -966,6 +1052,7 @@ def startup():
     global camera, serial_port, video_recorder, telemetry_state
     global telemetry_reader, frame_distributor, cv_state, cv_pipeline
     global gimbal_arbiter, wake_recorder, heartbeat, detection_logger
+    global tone_player
 
     log.info("Kombucha Body starting up...")
 
@@ -1048,6 +1135,14 @@ def startup():
             log.info("Heartbeat started")
     else:
         log.warning("No camera — video, CV, and frame endpoints unavailable")
+
+    # Audio — R2-style tone player
+    try:
+        tone_player = TonePlayer(volume=0.3)
+        log.info("Tone player initialized (15 moods)")
+    except Exception as e:
+        log.warning(f"Tone player failed to initialize: {e}")
+        tone_player = None
 
     # Center gimbal and show startup message
     if serial_port:
