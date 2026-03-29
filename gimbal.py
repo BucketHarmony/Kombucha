@@ -121,6 +121,7 @@ class GimbalArbiter:
 
         self._last_disengage_time = 0.0
         self._last_goodbye_time = 0.0  # Cooldown for goodbye sound
+        self._engaged_with_face = False  # Track if current engage was face (not just motion)
 
         # Object detection audio tracking
         self._known_objects: set = set()
@@ -361,6 +362,7 @@ class GimbalArbiter:
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
+                    self._engaged_with_face = True
                     # INSTANT detect trill + name flirtation (skip if repeated)
                     tp = _get_tone_player()
                     if tp and self._last_sound_id != "face_detect":
@@ -439,6 +441,7 @@ class GimbalArbiter:
 
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
+                    self._engaged_with_face = False  # Motion only, no face
                     # Motion warble — scales with motion size (skip if repeated)
                     tp = _get_tone_player()
                     if tp and self._last_sound_id != "motion_detect":
@@ -487,9 +490,10 @@ class GimbalArbiter:
                     self._last_disengage_time = time.time()
                     log.info("Instinct released: no targets")
                     self._stop_self_talk()
-                    # Womp-womp goodbye — only if not repeated recently
+                    # Womp-womp ONLY when a real face was lost (not motion flicker)
                     now_bye = time.time()
-                    if (now_bye - self._last_goodbye_time > 30.0
+                    if (self._engaged_with_face
+                            and now_bye - self._last_goodbye_time > 60.0
                             and self._last_sound_id != "goodbye"):
                         self._last_goodbye_time = now_bye
                         self._last_sound_id = "goodbye"
@@ -499,6 +503,7 @@ class GimbalArbiter:
                                 tp.play_mood("goodbye")
                             except Exception:
                                 pass
+                    self._engaged_with_face = False
                     if self._wake_recorder:
                         self._wake_recorder.disengage()
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})
