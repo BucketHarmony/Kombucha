@@ -478,9 +478,9 @@ HARMONIC_MOODS = {
         ('chord', 600, 'bright', 150),
     ],
     'goodbye': [
-        ('chord', 500, 'minor7', 200),
-        ('harmonic_chirp', 500, 300, 'minor', 250),
-        ('chord', 250, 'dark', 300),
+        ('harmonic_chirp', 400, 250, 'minor', 200),
+        ('silence', 80),
+        ('harmonic_chirp', 300, 180, 'dark', 250),
     ],
     'curious': [
         ('chord', 400, 'sus4', 80),

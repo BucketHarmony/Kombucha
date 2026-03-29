@@ -120,10 +120,14 @@ class GimbalArbiter:
         self._last_status_play = 0.0
 
         self._last_disengage_time = 0.0
+        self._last_goodbye_time = 0.0  # Cooldown for goodbye sound
 
         # Object detection audio tracking
-        self._known_objects: set = set()  # Objects we've already announced
+        self._known_objects: set = set()
         self._last_object_sound = 0.0
+
+        # Sound dedup — never repeat the same sound back-to-back
+        self._last_sound_id = ""
 
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
@@ -322,9 +326,10 @@ class GimbalArbiter:
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
-                    # INSTANT detect trill + name flirtation
+                    # INSTANT detect trill + name flirtation (skip if repeated)
                     tp = _get_tone_player()
-                    if tp:
+                    if tp and self._last_sound_id != "face_detect":
+                        self._last_sound_id = "face_detect"
                         try:
                             # Get face size for flirtation intensity
                             face_pct = 0.1
@@ -399,9 +404,10 @@ class GimbalArbiter:
 
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
-                    # Motion warble — scales with motion size
+                    # Motion warble — scales with motion size (skip if repeated)
                     tp = _get_tone_player()
-                    if tp:
+                    if tp and self._last_sound_id != "motion_detect":
+                        self._last_sound_id = "motion_detect"
                         try:
                             # Get motion area as fraction of frame
                             regions = cv_snap.get("motion_regions", [])
@@ -441,19 +447,23 @@ class GimbalArbiter:
 
                 if (self._mode == GimbalMode.INSTINCT
                         and self._no_target_since > 0
-                        and time.time() - self._no_target_since > CV_HYSTERESIS_S):
+                        and time.time() - self._no_target_since > 8.0):  # 8s wait (was CV_HYSTERESIS_S=2s)
                     self._mode = GimbalMode.IDLE
                     self._last_disengage_time = time.time()
                     log.info("Instinct released: no targets")
-                    # Stop self-talk
                     self._stop_self_talk()
-                    # Goodbye chord
-                    tp = _get_tone_player()
-                    if tp:
-                        try:
-                            tp.play_mood("goodbye")
-                        except Exception:
-                            pass
+                    # Womp-womp goodbye — only if not repeated recently
+                    now_bye = time.time()
+                    if (now_bye - self._last_goodbye_time > 30.0
+                            and self._last_sound_id != "goodbye"):
+                        self._last_goodbye_time = now_bye
+                        self._last_sound_id = "goodbye"
+                        tp = _get_tone_player()
+                        if tp:
+                            try:
+                                tp.play_mood("goodbye")
+                            except Exception:
+                                pass
                     if self._wake_recorder:
                         self._wake_recorder.disengage()
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})
