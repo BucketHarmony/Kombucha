@@ -176,6 +176,28 @@ class GimbalArbiter:
     def _stop_self_talk(self):
         self._self_talk_active = False
 
+    def _play_servo_sound(self, pan_from, pan_to, tilt_from, tilt_to):
+        """Play a quick servo movement sound in background."""
+        def _do():
+            try:
+                from audio_harmony import render_servo_sound
+                import struct as _s, tempfile, wave as _w, subprocess as _sp
+                samples = render_servo_sound(pan_from, pan_to, tilt_from, tilt_to)
+                if samples:
+                    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+                        tmp = f.name
+                    clamped = [max(-1.0, min(1.0, s * 0.5)) for s in samples]
+                    int_s = [int(s * 32767) for s in clamped]
+                    data = _s.pack('<%dh' % len(int_s), *int_s)
+                    with _w.open(tmp, 'w') as w:
+                        w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+                        w.writeframes(data)
+                    _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                        stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            except Exception:
+                pass
+        threading.Thread(target=_do, daemon=True).start()
+
     def _save_face_crops(self, dets):
         """Crop and save detected faces for recognition training."""
         if not self._cv_pipeline or not hasattr(self._cv_pipeline, '_queue'):
@@ -228,9 +250,11 @@ class GimbalArbiter:
                     "X": pan, "Y": tilt, "SPD": speed, "ACC": accel
                 })
                 if cmd:
+                    old_p, old_t = self._cmd_pan, self._cmd_tilt
                     self._send(cmd)
                     self._cmd_pan = float(pan)
                     self._cmd_tilt = float(tilt)
+                    self._play_servo_sound(old_p, pan, old_t, tilt)
                 return {"result": "ok", "mode": "manual"}
 
             if self._mode == GimbalMode.INSTINCT:
@@ -247,9 +271,11 @@ class GimbalArbiter:
                 "X": pan, "Y": tilt, "SPD": speed, "ACC": accel
             })
             if cmd:
+                old_p, old_t = self._cmd_pan, self._cmd_tilt
                 self._send(cmd)
                 self._cmd_pan = float(pan)
                 self._cmd_tilt = float(tilt)
+                self._play_servo_sound(old_p, pan, old_t, tilt)
             return {"result": "ok", "mode": self._mode.value}
 
     def set_mode(self, mode_str: str) -> dict:
@@ -518,10 +544,12 @@ class GimbalArbiter:
             "X": new_pan, "Y": new_tilt, "SPD": 150, "ACC": 30  # Was 70/12 — faster servo
         })
         if cmd:
+            old_pan, old_tilt = self._cmd_pan, self._cmd_tilt
             self._send(cmd)
             self._cmd_pan = float(new_pan)
             self._cmd_tilt = float(new_tilt)
             self._last_track_cmd_time = time.time()
+            self._play_servo_sound(old_pan, new_pan, old_tilt, new_tilt)
             log.info(
                 f"Tracking → pan={new_pan} tilt={new_tilt} "
                 f"(face@{raw_cx:.2f},{raw_cy:.2f} err={error_x:.2f},{error_y:.2f})"

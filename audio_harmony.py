@@ -423,6 +423,47 @@ def render_object_detect(class_name, confidence=0.5):
     return _concat(thump, *staccato)
 
 
+def render_servo_sound(pan_from, pan_to, tilt_from, tilt_to):
+    """Gimbal movement sound — pitch follows pan, chord follows tilt.
+
+    Pan left = low, pan right = high (spatial audio mapping).
+    Tilt up = bright/open, tilt down = dark/closed.
+    Bigger movements = longer sweep, tiny movements = short pip.
+    """
+    # Movement magnitude
+    pan_delta = abs(pan_to - pan_from)
+    tilt_delta = abs(tilt_to - tilt_from)
+    total_move = pan_delta + tilt_delta
+    if total_move < 1:
+        return []  # No audible movement
+
+    # Duration: 30ms for tiny, 120ms for big sweeps
+    dur = _humanize_ms(int(30 + min(total_move, 30) * 3), 0.15)
+
+    # Pan → frequency (left=-180 → 250Hz, center=0 → 450Hz, right=+180 → 650Hz)
+    freq_from = 250 + (pan_from + 180) / 360 * 400
+    freq_to = 250 + (pan_to + 180) / 360 * 400
+
+    # Tilt → chord quality (down=-30 → minor/dark, level=0 → sus4, up=+90 → major/bright)
+    tilt_avg = (tilt_from + tilt_to) / 2
+    if tilt_avg > 30:
+        chord = random.choice(['major', 'bright', 'warm'])
+    elif tilt_avg > -10:
+        chord = random.choice(['sus4', 'power', 'major'])
+    else:
+        chord = random.choice(['minor', 'dark', 'dim'])
+
+    # Volume: proportional to movement size, quiet overall
+    vol = min(0.25, 0.08 + total_move * 0.005)
+
+    if pan_delta > 3:
+        # Sweep — pan is moving, chirp between frequencies
+        return _render_harmonic_chirp(freq_from, freq_to, chord, dur, vol)
+    else:
+        # Pip — mostly tilt, single chord at current pan frequency
+        return _render_chord(freq_to, chord, dur, vol)
+
+
 HARMONIC_MOODS = {
     'greeting': [
         ('chord', 300, 'major', 100),
