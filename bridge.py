@@ -1128,6 +1128,7 @@ def startup():
         if gimbal_arbiter:
             gimbal_arbiter._wake_recorder = wake_recorder
             gimbal_arbiter._cv_pipeline = cv_pipeline
+            # tone_player wired below after audio init
 
         # Detection logger
         LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -1147,6 +1148,10 @@ def startup():
     try:
         tone_player = TonePlayer(volume=0.3)
         log.info("Tone player initialized (15 moods)")
+        # Wire tone_player into gimbal arbiter for instinct sounds
+        if gimbal_arbiter:
+            gimbal_arbiter._tone_player = tone_player
+            log.info("Tone player wired into gimbal arbiter")
     except Exception as e:
         log.warning(f"Tone player failed to initialize: {e}")
         tone_player = None

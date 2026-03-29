@@ -1,16 +1,6 @@
 [
   {
     "role": "human",
-    "text": "Hello Kombucha, can you hear me?",
-    "time": "21:18:26"
-  },
-  {
-    "role": "kombucha",
-    "text": "\n\nYeah, I hear you. Battery's at 95%, gimbal's idle, nobody in front of me. What's up?",
-    "time": "21:18:32"
-  },
-  {
-    "role": "human",
     "text": "Testing 123.  This is Bucket.  How are you doing?",
     "time": "21:26:31"
   },
@@ -1526,6 +1516,291 @@
       {
         "tool": "Bash",
         "detail": "sudo systemctl restart kombucha-bridge && sleep 3 && curl -s http://localhost:5050/health"
+      }
+    ]
+  },
+  {
+    "role": "human",
+    "text": "Please run a tick.  Include the full emotional range of sound.  Adjust your instinct to play a sound based on how you feel to the person you see",
+    "time": "00:24:42"
+  },
+  {
+    "role": "kombucha",
+    "text": "(static) ...I lost my train of thought.",
+    "time": "00:28:51",
+    "steps": [
+      {
+        "thought": "Let me get oriented first \u2014 read the current audio system, instinct code, and session state."
+      },
+      {
+        "tool": "Agent",
+        "detail": "{'subagent_type': 'Explore', 'description': 'Explore audio and instinct code', 'prompt': 'I need to "
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/health 2>&1"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/sense 2>&1"
+      },
+      {
+        "tool": "Bash",
+        "detail": "ls -t /opt/kombucha/ticks/ | head -5"
+      },
+      {
+        "tool": "Bash",
+        "detail": "find /opt/kombucha -name \"audio.py\" -o -name \"bridge.py\" -o -name \"gimbal.py\" -o -name \"mood_gestures.json\" -o -name \"ti"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/audio.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/mood_gestures.json"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/tick_helper.sh"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/goals.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/skills.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/faces.json"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/.claude/agents/kombucha-soul.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Bash",
+        "detail": "ls -ltr /opt/kombucha/ticks/ 2>/dev/null | tail -10"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/ticks/tick_0268.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/ticks/tick_0267.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/ticks/tick_0266.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/state/chat.json"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/state/chat.json"
+      },
+      {
+        "thought": "Good \u2014 bridge is up, battery at 97.5%, no faces detected, stuck in the stool forest. Now let me do two things in parallel: (1) add emotional sound to the instinct system in gimbal.py so it plays tones when it sees people, and (2) set up the tick."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/goals.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/.claude/agents/kombucha-soul.md"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/audio.py"
+      },
+      {
+        "thought": "Now I have the full picture. Let me do this in parallel: (1) modify gimbal.py to play emotional sounds on face detection, and (2) save the audio files to disk with tick association. Then run the tick.\n\nFirst, let me see how the gimbal gets access to the tone_player \u2014 I need to wire it in."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "tool": "Grep",
+        "detail": "tone_player"
+      },
+      {
+        "tool": "Grep",
+        "detail": "GimbalArbiter\\("
+      },
+      {
+        "tool": "Grep",
+        "detail": "GimbalArbiter"
+      },
+      {
+        "tool": "Grep",
+        "detail": "gimbal_arbiter|GimbalArbiter|from gimbal"
+      },
+      {
+        "tool": "Grep",
+        "detail": "gimbal"
+      },
+      {
+        "tool": "Grep",
+        "detail": "arbiter|Arbiter"
+      },
+      {
+        "thought": "Hmm, the arbiter must be instantiated elsewhere. Let me find where."
+      },
+      {
+        "tool": "Grep",
+        "detail": "GimbalArbiter"
+      },
+      {
+        "tool": "Grep",
+        "detail": "GimbalArbiter"
+      },
+      {
+        "tool": "Bash",
+        "detail": "grep -r \"GimbalArbiter\" --include=\"*.py\" -l 2>/dev/null"
+      },
+      {
+        "tool": "Bash",
+        "detail": "grep -n \"GimbalArbiter\" /opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Now I see the architecture. The `tone_player` is a global in bridge.py. The `GimbalArbiter` doesn't have access to it. I need to wire `tone_player` into the arbiter so it can play emotional sounds on face detection.\n\nLet me also check what happens with the wake recorder wiring:"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Perfect. The pattern is late-binding \u2014 wire the tone_player into the arbiter after both are created. Now let me make the changes:\n\n1. Add `tone_player` to `GimbalArbiter` and play emotional sounds on face engage/disengage\n2. Wire it in bridge.py after tone_player init"
+      },
+      {
+        "tool": "ToolSearch",
+        "detail": "{'query': 'select:TodoWrite', 'max_results': 1}"
+      },
+      {
+        "tool": "TodoWrite",
+        "detail": "{'todos': [{'content': 'Wire tone_player into GimbalArbiter for emotional sound on face detection', "
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "Now let me add tone_player support to the arbiter. I'll add it as a late-bound attribute (same pattern as wake_recorder), and play emotional sounds on face engage/disengage."
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "Now add the emotional sound method and wire it into face engage:"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "Now wire the sound into face engage (the block where instinct first engages on face detection):"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "I'll add the emotional sound right after instinct engages on a face. The logic: if we haven't seen anyone in >10s, play `greeting_known` (excited). If it's a quick re-detect, play `curious` (subtler)."
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "Now add a goodbye sound on disengage:"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "Also add a sound for motion-only detection (no face \u2014 something moved but we don't know what):"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/gimbal.py"
+      },
+      {
+        "thought": "Now wire the tone_player into the arbiter in bridge.py:"
+      },
+      {
+        "tool": "TodoWrite",
+        "detail": "{'todos': [{'content': 'Wire tone_player into GimbalArbiter for emotional sound on face detection', "
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Now add the tone_player wiring after tone_player is initialized:"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Good. Now restart the bridge to pick up these changes, then run the tick."
+      },
+      {
+        "tool": "TodoWrite",
+        "detail": "{'todos': [{'content': 'Wire tone_player into GimbalArbiter for emotional sound on face detection', "
+      },
+      {
+        "tool": "Bash",
+        "detail": "sudo systemctl restart kombucha-bridge 2>&1 && sleep 3 && curl -s http://localhost:5050/health 2>&1"
       }
     ]
   }

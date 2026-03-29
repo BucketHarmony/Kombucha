@@ -69,6 +69,7 @@ class GimbalArbiter:
         self._serial_lock = serial_lock
         self._wake_recorder = wake_recorder
         self._cv_pipeline = cv_pipeline
+        self._tone_player = None  # late-bound from bridge.py
         self._lock = threading.Lock()
 
         self._mode = GimbalMode.IDLE
@@ -90,9 +91,24 @@ class GimbalArbiter:
         self._light_off_at = 0.0
 
         self._last_disengage_time = 0.0
+        self._last_sound_time = 0.0  # cooldown for instinct sounds
 
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
+
+    def _play_instinct_sound(self, mood: str):
+        """Play an emotional tone through the instinct layer. 5s cooldown."""
+        if self._tone_player is None:
+            return
+        now = time.time()
+        if now - self._last_sound_time < 5.0:
+            return
+        self._last_sound_time = now
+        try:
+            self._tone_player.play_mood(mood)
+            log.info(f"Instinct sound: {mood}")
+        except Exception as e:
+            log.warning(f"Instinct sound failed: {e}")
 
     @property
     def mode(self) -> GimbalMode:
@@ -179,7 +195,14 @@ class GimbalArbiter:
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.engage("face", dets)
+                    # Emotional sound on face engage
                     now = time.time()
+                    if now - self._last_disengage_time > 30.0:
+                        self._play_instinct_sound("greeting_known")
+                    elif now - self._last_disengage_time > 10.0:
+                        self._play_instinct_sound("greeting_unknown")
+                    else:
+                        self._play_instinct_sound("curious")
                     if now - self._last_light_change > 3.0:
                         light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 255})
                         if light_cmd:
@@ -221,6 +244,7 @@ class GimbalArbiter:
 
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
+                    self._play_instinct_sound("alert")
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.engage("motion", dets)
@@ -238,6 +262,7 @@ class GimbalArbiter:
                     self._mode = GimbalMode.IDLE
                     self._last_disengage_time = time.time()
                     log.info("Instinct released: no targets")
+                    self._play_instinct_sound("goodbye")
                     if self._wake_recorder:
                         self._wake_recorder.disengage()
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})
