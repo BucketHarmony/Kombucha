@@ -7,7 +7,7 @@ beeps, and warbles that convey mood through frequency and timing.
 
 Usage:
     from audio import TonePlayer
-    player = TonePlayer(volume=0.3)
+    player = TonePlayer(volume=1.0)
     player.play_mood("curious")
     player.play_sequence([
         {"type": "chirp", "start": 400, "end": 1200, "ms": 80},
@@ -243,7 +243,7 @@ def samples_to_pcm(samples):
 class TonePlayer:
     """Non-blocking tone player. Saves all output to WAV with metadata."""
 
-    def __init__(self, volume=0.3, device=DEVICE, audio_dir=AUDIO_DIR):
+    def __init__(self, volume=1.0, device=DEVICE, audio_dir=AUDIO_DIR):
         self.volume = volume
         self.device = device
         self.audio_dir = Path(audio_dir)
@@ -356,7 +356,7 @@ class TonePlayer:
 # Convenience: run from command line to test
 if __name__ == "__main__":
     import sys
-    player = TonePlayer(volume=0.3)
+    player = TonePlayer(volume=1.0)
     mood = sys.argv[1] if len(sys.argv) > 1 else "greeting"
     tick = int(sys.argv[2]) if len(sys.argv) > 2 else None
     if tick is not None:
