@@ -324,7 +324,7 @@ class CVPipeline(threading.Thread):
             all_dets = []
 
             if self._use_yolo:
-                results = self._model(frame, verbose=False, conf=0.3, imgsz=320)
+                results = self._model(frame, verbose=False, conf=0.5, imgsz=320)
                 for r in results:
                     for box in r.boxes:
                         cls_id = int(box.cls[0])
