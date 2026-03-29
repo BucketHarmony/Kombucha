@@ -99,7 +99,7 @@ class GimbalArbiter:
         self._smooth_cy = 0.5
 
         self._last_track_cmd_time = 0.0
-        self._track_cooldown_s = 0.4
+        self._track_cooldown_s = 0.15  # Was 0.4 — faster updates = smoother
 
         self._last_light_change = 0.0
         self._light_off_at = 0.0
@@ -296,7 +296,7 @@ class GimbalArbiter:
         raw_cx = target["cx"]
         raw_cy = target["cy"]
 
-        alpha = CV_SMOOTHING
+        alpha = 0.3  # Was CV_SMOOTHING (0.5) — lower = smoother, less jitter
         self._smooth_cx = alpha * raw_cx + (1 - alpha) * self._smooth_cx
         self._smooth_cy = alpha * raw_cy + (1 - alpha) * self._smooth_cy
 
@@ -311,14 +311,16 @@ class GimbalArbiter:
         current_pan = self._cmd_pan
         current_tilt = self._cmd_tilt
 
-        pan_adj = _clamp(error_x * CV_KP_PAN, -CV_MAX_STEP_DEG, CV_MAX_STEP_DEG)
-        tilt_adj = _clamp(-error_y * CV_KP_TILT, -CV_MAX_STEP_DEG, CV_MAX_STEP_DEG)
+        # Bigger steps + higher gain = fewer commands to reach target
+        max_step = 15.0  # Was CV_MAX_STEP_DEG (6.0) — larger steps = fewer jerks
+        pan_adj = _clamp(error_x * 120.0, -max_step, max_step)   # Was CV_KP_PAN (80)
+        tilt_adj = _clamp(-error_y * 60.0, -max_step, max_step)  # Was CV_KP_TILT (40)
 
         new_pan = int(_clamp(current_pan + pan_adj, -180, 180))
         new_tilt = int(_clamp(current_tilt + tilt_adj, -30, 90))
 
         cmd = validate_tcode(133, {
-            "X": new_pan, "Y": new_tilt, "SPD": 70, "ACC": 12
+            "X": new_pan, "Y": new_tilt, "SPD": 150, "ACC": 30  # Was 70/12 — faster servo
         })
         if cmd:
             self._send(cmd)
