@@ -91,19 +91,32 @@ class GimbalArbiter:
         self._light_off_at = 0.0
 
         self._last_disengage_time = 0.0
-        self._last_sound_time = 0.0  # cooldown for instinct sounds
+        self._last_sound_by_mood: dict[str, float] = {}  # per-mood cooldowns
 
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
 
+    # Repeated alert/goodbye spam is annoying — long cooldown for those.
+    # Social sounds (greetings) get a shorter cooldown since they're rarer.
+    _SOUND_COOLDOWNS = {
+        "alert": 30.0,
+        "goodbye": 30.0,
+        "curious": 15.0,
+        "greeting_known": 10.0,
+        "greeting_unknown": 10.0,
+    }
+    _DEFAULT_SOUND_COOLDOWN = 10.0
+
     def _play_instinct_sound(self, mood: str):
-        """Play an emotional tone through the instinct layer. 5s cooldown."""
+        """Play an emotional tone through the instinct layer. Per-mood cooldown."""
         if self._tone_player is None:
             return
         now = time.time()
-        if now - self._last_sound_time < 5.0:
+        cooldown = self._SOUND_COOLDOWNS.get(mood, self._DEFAULT_SOUND_COOLDOWN)
+        last = self._last_sound_by_mood.get(mood, 0.0)
+        if now - last < cooldown:
             return
-        self._last_sound_time = now
+        self._last_sound_by_mood[mood] = now
         try:
             self._tone_player.play_mood(mood)
             log.info(f"Instinct sound: {mood}")
