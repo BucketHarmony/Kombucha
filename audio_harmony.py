@@ -257,33 +257,34 @@ def compose_status_phrase(state):
                 has_face, seconds_since_cat
     Returns: list of float samples
     """
+    # Randomize element order each time for variety
+    elements = []
+
+    elements.append(('social', lambda: encode_social(
+        state.get('social', 0), state.get('has_face', False))))
+    elements.append(('curiosity', lambda: encode_curiosity(state.get('curiosity', 0))))
+    elements.append(('battery', lambda: encode_battery(state.get('battery_pct', 50))))
+    elements.append(('wanderlust', lambda: encode_wanderlust(state.get('wanderlust', 0))))
+    elements.append(('distance', lambda: encode_distance(state.get('distance_m', 0))))
+
+    # Cat motif only if recently seen
+    cat_secs = state.get('seconds_since_cat')
+    if cat_secs is not None and cat_secs < 3600:
+        elements.append(('cat', lambda: encode_cat_memory(cat_secs)))
+
+    # Shuffle order — each status phrase has a different structure
+    random.shuffle(elements)
+
+    # Pick 3-4 elements (not all every time)
+    count = random.randint(3, min(4, len(elements)))
+    selected = elements[:count]
+
     parts = []
-
-    # 1. Battery chord (pitch = level)
-    parts.append(encode_battery(state.get('battery_pct', 50)))
-    parts.append(_silence(40))
-
-    # 2. Wanderlust tremolo
-    parts.append(encode_wanderlust(state.get('wanderlust', 0)))
-    parts.append(_silence(30))
-
-    # 3. Social tone
-    parts.append(encode_social(
-        state.get('social', 0), state.get('has_face', False)))
-    parts.append(_silence(30))
-
-    # 4. Curiosity arpeggio
-    parts.append(encode_curiosity(state.get('curiosity', 0)))
-    parts.append(_silence(30))
-
-    # 5. Distance pips
-    parts.append(encode_distance(state.get('distance_m', 0)))
-    parts.append(_silence(30))
-
-    # 6. Cat motif (conditional)
-    cat = encode_cat_memory(state.get('seconds_since_cat'))
-    if cat:
-        parts.append(cat)
+    for name, fn in selected:
+        samples = fn()
+        if samples:
+            parts.append(samples)
+            parts.append(_silence(random.randint(25, 60)))
 
     return _concat(*parts)
 
@@ -563,7 +564,7 @@ def render_harmonic_mood(mood, volume=1.0):
 class HarmonicPlayer:
     """Plays harmonic tones and status phrases via aplay."""
 
-    def __init__(self, volume=1.0):
+    def __init__(self, volume=0.5):
         self.volume = volume
         self._lock = threading.Lock()
         self._last_play = {}  # mood -> timestamp for cooldowns

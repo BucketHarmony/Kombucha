@@ -36,8 +36,8 @@ def _get_tone_player():
     if _tone_player is None:
         try:
             from audio_harmony import HarmonicPlayer
-            _tone_player = HarmonicPlayer(volume=1.0)
-            log.info("Audio: HarmonicPlayer loaded (polyphonic)")
+            _tone_player = HarmonicPlayer(volume=0.5)
+            log.info("Audio: HarmonicPlayer loaded (polyphonic, 50% vol)")
         except Exception as e:
             try:
                 from audio import TonePlayer
@@ -167,7 +167,7 @@ class GimbalArbiter:
                     tp.play_status(state)
                 except Exception:
                     pass
-                time.sleep(4)
+                time.sleep(9)  # 9 seconds between status phrases
             self._self_talk_active = False
 
         self._self_talk_thread = threading.Thread(target=_talk_loop, daemon=True)
