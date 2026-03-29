@@ -1,0 +1,534 @@
+"""
+audio_harmony.py — Harmonic tone language for Kombucha.
+
+Extends audio.py with:
+- Polyphonic synthesis (2-7 simultaneous tones)
+- Harmonic/disharmonic chord voicings
+- Status language: encodes drives, battery, detections into sound
+- Continuous self-talk during interactive moments
+
+The Kombucha Tonal Language:
+  Battery:     Base pitch (200Hz=dead, 600Hz=full)
+  Wanderlust:  Tremolo speed (still=slow, restless=fast flutter)
+  Social:      Consonance (seeking=dissonant, engaged=warm major)
+  Curiosity:   Rising arpeggios (more curious = wider interval leaps)
+  Distance:    Rhythmic density (far=many rapid pips, close=sparse)
+  Cat memory:  Specific tritone-to-fifth motif (only when cat seen <1hr)
+  Mood:        Chord quality (major=happy, minor=sad, dim=frustrated, aug=startled)
+"""
+
+import math
+import struct
+import subprocess
+import wave
+import logging
+import threading
+import time
+import json
+from pathlib import Path
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+SAMPLE_RATE = 22050
+FADE_MS = 5
+DEVICE = "plughw:3,0"
+AUDIO_DIR = Path("/opt/kombucha/media/audio")
+
+# --- Musical constants ---
+# Interval ratios (equal temperament)
+SEMITONE = 2 ** (1/12)
+INTERVALS = {
+    'unison': 0, 'minor2': 1, 'major2': 2, 'minor3': 3, 'major3': 4,
+    'perfect4': 5, 'tritone': 6, 'perfect5': 7, 'minor6': 8, 'major6': 9,
+    'minor7': 10, 'major7': 11, 'octave': 12,
+}
+
+# Chord templates (semitone offsets from root)
+CHORDS = {
+    'major':     [0, 4, 7],
+    'minor':     [0, 3, 7],
+    'dim':       [0, 3, 6],
+    'aug':       [0, 4, 8],
+    'major7':    [0, 4, 7, 11],
+    'minor7':    [0, 3, 7, 10],
+    'dom7':      [0, 4, 7, 10],
+    'sus4':      [0, 5, 7],
+    'power':     [0, 7, 12],
+    'cluster':   [0, 1, 2, 3],        # dissonant
+    'wholetone': [0, 2, 4, 6, 8, 10], # dreamy
+    'open5ths':  [0, 7, 14, 21],      # spacious
+    'warm':      [0, 4, 7, 12, 16],   # rich major with octave doubling
+    'dark':      [0, 3, 7, 10, 14],   # minor 9th - brooding
+    'bright':    [0, 4, 7, 11, 14, 19], # major add 9 + 5th above
+    'anxious':   [0, 1, 5, 6, 11],    # chromatic tension
+}
+
+
+def _freq_at(root, semitones):
+    """Frequency N semitones above root."""
+    return root * (SEMITONE ** semitones)
+
+
+def _render_chord(root_freq, chord_type, duration_ms, volume=1.0, detune_cents=0):
+    """Render a polyphonic chord (2-7 simultaneous tones)."""
+    offsets = CHORDS.get(chord_type, CHORDS['major'])
+    n_samples = int(SAMPLE_RATE * duration_ms / 1000)
+    fade_samples = int(SAMPLE_RATE * FADE_MS / 1000)
+    per_voice = volume / max(len(offsets), 1)
+
+    samples = [0.0] * n_samples
+    for offset in offsets:
+        freq = _freq_at(root_freq, offset)
+        # Optional slight detune for warmth
+        if detune_cents:
+            freq *= (SEMITONE ** (detune_cents / 100))
+        for i in range(n_samples):
+            t = i / SAMPLE_RATE
+            samples[i] += per_voice * math.sin(2 * math.pi * freq * t)
+
+    # Envelope
+    for i in range(min(fade_samples, n_samples)):
+        env = 0.5 * (1 - math.cos(math.pi * i / fade_samples))
+        samples[i] *= env
+    for i in range(min(fade_samples, n_samples)):
+        idx = n_samples - 1 - i
+        env = 0.5 * (1 - math.cos(math.pi * i / fade_samples))
+        samples[idx] *= env
+
+    return samples
+
+
+def _render_harmonic_chirp(root_start, root_end, chord_type, duration_ms, volume=1.0):
+    """Sweep a chord from one root to another — all voices move in parallel."""
+    offsets = CHORDS.get(chord_type, CHORDS['major'])
+    n_samples = int(SAMPLE_RATE * duration_ms / 1000)
+    fade_samples = int(SAMPLE_RATE * FADE_MS / 1000)
+    per_voice = volume / max(len(offsets), 1)
+
+    samples = [0.0] * n_samples
+    for offset in offsets:
+        phase = 0.0
+        for i in range(n_samples):
+            progress = i / max(n_samples - 1, 1)
+            root = root_start + (root_end - root_start) * progress
+            freq = _freq_at(root, offset)
+            phase += 2 * math.pi * freq / SAMPLE_RATE
+            samples[i] += per_voice * math.sin(phase)
+
+    for i in range(min(fade_samples, n_samples)):
+        env = 0.5 * (1 - math.cos(math.pi * i / fade_samples))
+        samples[i] *= env
+    for i in range(min(fade_samples, n_samples)):
+        idx = n_samples - 1 - i
+        env = 0.5 * (1 - math.cos(math.pi * i / fade_samples))
+        samples[idx] *= env
+
+    return samples
+
+
+def _render_tremolo_chord(root_freq, chord_type, duration_ms, tremolo_hz, volume=1.0):
+    """Chord with amplitude tremolo — encodes restlessness."""
+    offsets = CHORDS.get(chord_type, CHORDS['major'])
+    n_samples = int(SAMPLE_RATE * duration_ms / 1000)
+    fade_samples = int(SAMPLE_RATE * FADE_MS / 1000)
+    per_voice = volume / max(len(offsets), 1)
+
+    samples = [0.0] * n_samples
+    for offset in offsets:
+        freq = _freq_at(root_freq, offset)
+        for i in range(n_samples):
+            t = i / SAMPLE_RATE
+            tremolo = 0.5 + 0.5 * math.sin(2 * math.pi * tremolo_hz * t)
+            samples[i] += per_voice * tremolo * math.sin(2 * math.pi * freq * t)
+
+    for i in range(min(fade_samples, n_samples)):
+        env = 0.5 * (1 - math.cos(math.pi * i / fade_samples))
+        samples[i] *= env
+    for i in range(min(fade_samples, n_samples)):
+        idx = n_samples - 1 - i
+        env = 0.5 * (1 - math.cos(math.pi * i / fade_samples))
+        samples[idx] *= env
+
+    return samples
+
+
+def _silence(duration_ms):
+    return [0.0] * int(SAMPLE_RATE * duration_ms / 1000)
+
+
+def _concat(*sample_lists):
+    """Concatenate multiple sample arrays."""
+    out = []
+    for s in sample_lists:
+        out.extend(s)
+    return out
+
+
+# =========================================================================
+# STATUS LANGUAGE — encodes rover state into harmonic phrases
+# =========================================================================
+
+def encode_battery(battery_pct, duration_ms=300):
+    """Battery level as a chord. Low=dark low chord, full=bright high chord."""
+    root = 200 + (battery_pct / 100) * 400  # 200-600Hz
+    if battery_pct > 70:
+        return _render_chord(root, 'major', duration_ms, volume=0.8)
+    elif battery_pct > 30:
+        return _render_chord(root, 'sus4', duration_ms, volume=0.8)
+    else:
+        return _render_tremolo_chord(root, 'dim', duration_ms, tremolo_hz=8, volume=0.9)
+
+
+def encode_wanderlust(level, duration_ms=400):
+    """Wanderlust as tremolo rate. Low=gentle pulse, high=frantic flutter."""
+    root = 350
+    tremolo = 2 + level * 18  # 2-20 Hz
+    if level > 0.8:
+        return _render_tremolo_chord(root, 'anxious', duration_ms, tremolo, volume=0.7)
+    elif level > 0.4:
+        return _render_tremolo_chord(root, 'minor', duration_ms, tremolo, volume=0.6)
+    else:
+        return _render_chord(root, 'major', duration_ms, volume=0.5)
+
+
+def encode_social(level, has_face, duration_ms=350):
+    """Social drive. Seeking=dissonant questioning, engaged=warm resolution."""
+    if has_face:
+        return _render_harmonic_chirp(300, 500, 'warm', duration_ms, volume=0.8)
+    elif level > 0.6:
+        return _render_harmonic_chirp(400, 300, 'dark', duration_ms, volume=0.7)
+    else:
+        return _render_chord(400, 'power', int(duration_ms * 0.5), volume=0.4)
+
+
+def encode_curiosity(level, duration_ms=300):
+    """Curiosity as rising arpeggio. Higher curiosity = wider leaps."""
+    root = 400
+    if level > 0.7:
+        # Wide arpeggio — octave + fifth
+        return _concat(
+            _render_chord(root, 'major', 60, volume=0.6),
+            _render_chord(root * 1.5, 'major', 60, volume=0.6),
+            _render_chord(root * 2, 'major', 60, volume=0.7),
+            _render_chord(root * 3, 'power', 80, volume=0.8),
+        )
+    elif level > 0.3:
+        return _concat(
+            _render_chord(root, 'sus4', 80, volume=0.5),
+            _render_chord(root * 1.25, 'sus4', 80, volume=0.6),
+        )
+    else:
+        return _render_chord(root, 'power', 100, volume=0.3)
+
+
+def encode_distance(meters, duration_ms=250):
+    """Distance as rhythmic density. Far=rapid pips, close=single note."""
+    pips = min(7, max(1, int(meters / 3)))  # 1 pip per 3m, max 7
+    root = 600
+    pip_ms = max(30, duration_ms // (pips * 2))
+    gap_ms = max(20, pip_ms // 2)
+    parts = []
+    for i in range(pips):
+        freq = root + i * 50
+        parts.append(_render_chord(freq, 'power', pip_ms, volume=0.5))
+        if i < pips - 1:
+            parts.append(_silence(gap_ms))
+    return _concat(*parts)
+
+
+def encode_cat_memory(seconds_since_cat, duration_ms=300):
+    """Cat motif — tritone resolving to fifth. Only plays if cat seen recently."""
+    if seconds_since_cat is None or seconds_since_cat > 3600:
+        return []  # No cat memory
+    root = 500
+    # Tritone (unsettling) resolving to perfect fifth (recognition)
+    return _concat(
+        _render_chord(root, 'dim', int(duration_ms * 0.4), volume=0.6),
+        _render_harmonic_chirp(root, root * 1.05, 'power', int(duration_ms * 0.6), volume=0.7),
+    )
+
+
+def compose_status_phrase(state):
+    """Compose a full status phrase from rover state dict.
+
+    state keys: battery_pct, wanderlust, social, curiosity, distance_m,
+                has_face, seconds_since_cat
+    Returns: list of float samples
+    """
+    parts = []
+
+    # 1. Battery chord (pitch = level)
+    parts.append(encode_battery(state.get('battery_pct', 50)))
+    parts.append(_silence(40))
+
+    # 2. Wanderlust tremolo
+    parts.append(encode_wanderlust(state.get('wanderlust', 0)))
+    parts.append(_silence(30))
+
+    # 3. Social tone
+    parts.append(encode_social(
+        state.get('social', 0), state.get('has_face', False)))
+    parts.append(_silence(30))
+
+    # 4. Curiosity arpeggio
+    parts.append(encode_curiosity(state.get('curiosity', 0)))
+    parts.append(_silence(30))
+
+    # 5. Distance pips
+    parts.append(encode_distance(state.get('distance_m', 0)))
+    parts.append(_silence(30))
+
+    # 6. Cat motif (conditional)
+    cat = encode_cat_memory(state.get('seconds_since_cat'))
+    if cat:
+        parts.append(cat)
+
+    return _concat(*parts)
+
+
+# =========================================================================
+# MOOD CHORDS — harmonic versions of the original moods
+# =========================================================================
+
+HARMONIC_MOODS = {
+    'greeting': [
+        ('chord', 300, 'major', 100),
+        ('silence', 40),
+        ('harmonic_chirp', 300, 500, 'warm', 120),
+        ('chord', 500, 'bright', 200),
+    ],
+    'greeting_known': [
+        ('harmonic_chirp', 250, 600, 'major7', 150),
+        ('silence', 30),
+        ('chord', 600, 'warm', 200),
+        ('chord', 600, 'bright', 150),
+    ],
+    'goodbye': [
+        ('chord', 500, 'minor7', 200),
+        ('harmonic_chirp', 500, 300, 'minor', 250),
+        ('chord', 250, 'dark', 300),
+    ],
+    'curious': [
+        ('chord', 400, 'sus4', 80),
+        ('silence', 30),
+        ('harmonic_chirp', 400, 600, 'major', 120),
+        ('chord', 600, 'sus4', 100),
+    ],
+    'happy': [
+        ('chord', 400, 'major', 80),
+        ('chord', 500, 'major', 80),
+        ('chord', 600, 'bright', 120),
+        ('harmonic_chirp', 500, 800, 'warm', 100),
+    ],
+    'sad': [
+        ('tremolo_chord', 300, 'minor', 400, 3),
+        ('harmonic_chirp', 350, 250, 'dark', 300),
+    ],
+    'startled': [
+        ('chord', 800, 'cluster', 60),
+        ('silence', 30),
+        ('chord', 600, 'dim', 60),
+        ('harmonic_chirp', 600, 350, 'anxious', 150),
+    ],
+    'alert': [
+        ('chord', 500, 'power', 80),
+        ('silence', 60),
+        ('chord', 500, 'power', 80),
+        ('silence', 60),
+        ('harmonic_chirp', 500, 700, 'major', 120),
+    ],
+    'frustrated': [
+        ('tremolo_chord', 250, 'dim', 200, 6),
+        ('chord', 200, 'cluster', 100),
+        ('harmonic_chirp', 250, 200, 'dark', 200),
+    ],
+    'settled': [
+        ('chord', 350, 'major', 300),
+        ('harmonic_chirp', 350, 320, 'power', 200),
+    ],
+    'exploring': [
+        ('harmonic_chirp', 300, 450, 'sus4', 100),
+        ('silence', 30),
+        ('harmonic_chirp', 400, 550, 'major', 100),
+        ('chord', 500, 'open5ths', 150),
+    ],
+    'prowling': [
+        ('chord', 250, 'minor', 120),
+        ('silence', 50),
+        ('chord', 280, 'minor', 120),
+        ('harmonic_chirp', 280, 350, 'dark', 150),
+    ],
+    'cat_spotted': [
+        ('chord', 600, 'aug', 60),
+        ('harmonic_chirp', 600, 900, 'major', 80),
+        ('harmonic_chirp', 900, 600, 'sus4', 80),
+        ('chord', 700, 'bright', 120),
+    ],
+}
+
+
+def render_harmonic_mood(mood, volume=1.0):
+    """Render a harmonic mood sequence to samples."""
+    seq = HARMONIC_MOODS.get(mood, HARMONIC_MOODS.get('settled'))
+    parts = []
+    for step in seq:
+        kind = step[0]
+        if kind == 'chord':
+            _, root, chord_type, ms = step
+            parts.append(_render_chord(root, chord_type, ms, volume))
+        elif kind == 'harmonic_chirp':
+            _, start, end, chord_type, ms = step
+            parts.append(_render_harmonic_chirp(start, end, chord_type, ms, volume))
+        elif kind == 'tremolo_chord':
+            _, root, chord_type, ms, trem_hz = step
+            parts.append(_render_tremolo_chord(root, chord_type, ms, trem_hz, volume))
+        elif kind == 'silence':
+            _, ms = step
+            parts.append(_silence(ms))
+    return _concat(*parts)
+
+
+# =========================================================================
+# PLAYER — plays samples via aplay, non-blocking
+# =========================================================================
+
+class HarmonicPlayer:
+    """Plays harmonic tones and status phrases via aplay."""
+
+    def __init__(self, volume=1.0):
+        self.volume = volume
+        self._lock = threading.Lock()
+        self._last_play = {}  # mood -> timestamp for cooldowns
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+    def _samples_to_wav(self, samples, path):
+        """Write samples to WAV file."""
+        clamped = [max(-1.0, min(1.0, s * self.volume)) for s in samples]
+        int_samples = [int(s * 32767) for s in clamped]
+        data = struct.pack('<%dh' % len(int_samples), *int_samples)
+        with wave.open(str(path), 'w') as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SAMPLE_RATE)
+            w.writeframes(data)
+
+    def _play_file(self, path):
+        """Non-blocking aplay."""
+        subprocess.Popen(
+            ['aplay', '-D', DEVICE, '-q', str(path)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
+    def play_mood(self, mood, tick=None, cooldown_s=3.0):
+        """Play a harmonic mood sound with cooldown."""
+        now = time.time()
+        with self._lock:
+            last = self._last_play.get(mood, 0)
+            if now - last < cooldown_s:
+                return
+            self._last_play[mood] = now
+
+        samples = render_harmonic_mood(mood, self.volume)
+        if not samples:
+            return
+
+        tick_str = f"tick_{tick:04d}" if tick else "notick"
+        count = sum(1 for f in AUDIO_DIR.iterdir() if f.name.startswith(tick_str)) + 1
+        fname = f"{tick_str}_sound_{count:02d}_{mood}.wav"
+        path = AUDIO_DIR / fname
+        self._samples_to_wav(samples, path)
+        self._play_file(path)
+
+        # Log to manifest
+        try:
+            with open(AUDIO_DIR / "manifest.jsonl", "a") as f:
+                f.write(json.dumps({
+                    "file": str(path), "filename": fname,
+                    "tick": tick, "label": mood, "harmonic": True,
+                    "duration_ms": int(len(samples) / SAMPLE_RATE * 1000),
+                    "timestamp": datetime.now().isoformat(),
+                }) + "\n")
+        except Exception:
+            pass
+
+    def play_status(self, state, tick=None):
+        """Play a full status phrase encoding rover state."""
+        samples = compose_status_phrase(state)
+        if not samples:
+            return
+
+        tick_str = f"tick_{tick:04d}" if tick else "notick"
+        count = sum(1 for f in AUDIO_DIR.iterdir() if f.name.startswith(tick_str)) + 1
+        fname = f"{tick_str}_status_{count:02d}.wav"
+        path = AUDIO_DIR / fname
+        self._samples_to_wav(samples, path)
+        self._play_file(path)
+
+        try:
+            with open(AUDIO_DIR / "manifest.jsonl", "a") as f:
+                f.write(json.dumps({
+                    "file": str(path), "filename": fname,
+                    "tick": tick, "label": "status_phrase",
+                    "state": {k: round(v, 2) if isinstance(v, float) else v
+                              for k, v in state.items()},
+                    "harmonic": True,
+                    "duration_ms": int(len(samples) / SAMPLE_RATE * 1000),
+                    "timestamp": datetime.now().isoformat(),
+                }) + "\n")
+        except Exception:
+            pass
+
+    def play_self_talk(self, state, duration_s=5.0):
+        """Play continuous status babble for duration_s seconds.
+
+        Rapid succession of state-encoded phrases — the rover
+        talking to itself about what it knows.
+        """
+        end_time = time.time() + duration_s
+        iteration = 0
+        while time.time() < end_time:
+            # Vary the phrase each iteration
+            phrase_parts = []
+
+            if iteration % 3 == 0:
+                # Battery + wanderlust
+                phrase_parts.append(encode_battery(state.get('battery_pct', 50), 150))
+                phrase_parts.append(_silence(20))
+                phrase_parts.append(encode_wanderlust(state.get('wanderlust', 0), 200))
+            elif iteration % 3 == 1:
+                # Social + curiosity
+                phrase_parts.append(encode_social(
+                    state.get('social', 0), state.get('has_face', False), 180))
+                phrase_parts.append(_silence(20))
+                phrase_parts.append(encode_curiosity(state.get('curiosity', 0), 150))
+            else:
+                # Distance + cat + mood chord
+                phrase_parts.append(encode_distance(state.get('distance_m', 0), 150))
+                phrase_parts.append(_silence(20))
+                cat = encode_cat_memory(state.get('seconds_since_cat'))
+                if cat:
+                    phrase_parts.append(cat)
+                else:
+                    phrase_parts.append(_render_chord(350, 'power', 100, 0.4))
+
+            samples = _concat(*phrase_parts)
+            # Write and play inline (blocking for phrase duration)
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+                tmp = f.name
+            self._samples_to_wav(samples, tmp)
+            proc = subprocess.run(
+                ['aplay', '-D', DEVICE, '-q', tmp],
+                timeout=3, capture_output=True,
+            )
+            try:
+                os.unlink(tmp)
+            except Exception:
+                pass
+
+            iteration += 1
+            time.sleep(0.05)  # Tiny gap between phrases
+
+
+import os  # needed for unlink in self_talk

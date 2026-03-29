@@ -30,12 +30,17 @@ def _get_tone_player():
     global _tone_player
     if _tone_player is None:
         try:
-            from audio import TonePlayer
-            _tone_player = TonePlayer(volume=1.0)
-            log.info("Audio: TonePlayer loaded for instinct sounds")
+            from audio_harmony import HarmonicPlayer
+            _tone_player = HarmonicPlayer(volume=1.0)
+            log.info("Audio: HarmonicPlayer loaded (polyphonic)")
         except Exception as e:
-            log.warning(f"Audio: TonePlayer not available ({e})")
-            _tone_player = False  # sentinel: tried and failed
+            try:
+                from audio import TonePlayer
+                _tone_player = TonePlayer(volume=1.0)
+                log.info("Audio: TonePlayer loaded (fallback mono)")
+            except Exception as e2:
+                log.warning(f"Audio: no player available ({e}, {e2})")
+                _tone_player = False
     return _tone_player if _tone_player else None
 
 log = logging.getLogger(__name__)
@@ -104,10 +109,63 @@ class GimbalArbiter:
         self._last_light_change = 0.0
         self._light_off_at = 0.0
 
+        # Self-talk: background status babble during sustained face tracking
+        self._self_talk_thread = None
+        self._self_talk_active = False
+        self._last_status_play = 0.0
+
         self._last_disengage_time = 0.0
 
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
+
+    def _start_self_talk(self):
+        """Start background self-talk babble during sustained face interaction."""
+        if self._self_talk_active:
+            return
+        self._self_talk_active = True
+
+        def _talk_loop():
+            tp = _get_tone_player()
+            if not tp or not hasattr(tp, 'play_status'):
+                self._self_talk_active = False
+                return
+            while self._self_talk_active and self._mode == GimbalMode.INSTINCT:
+                state = {
+                    'battery_pct': 50, 'wanderlust': 0.5, 'social': 0.8,
+                    'curiosity': 0.3, 'distance_m': 0,
+                    'has_face': True, 'seconds_since_cat': None,
+                }
+                try:
+                    import json as _json
+                    with open('/opt/kombucha/state/body_state.json') as f:
+                        bs = _json.load(f)
+                    drives = bs.get('drives', {})
+                    state['wanderlust'] = drives.get('wanderlust', 0.5)
+                    state['social'] = drives.get('social', 0.5)
+                    state['curiosity'] = drives.get('curiosity', 0.3)
+                except Exception:
+                    pass
+                try:
+                    tsnap = self._telemetry.snapshot()
+                    from hardware import BATTERY_MIN_V, BATTERY_MAX_V, _clamp
+                    bv = tsnap.get('battery_v', 0)
+                    state['battery_pct'] = _clamp(
+                        (bv - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100, 0, 100)
+                except Exception:
+                    pass
+                try:
+                    tp.play_status(state)
+                except Exception:
+                    pass
+                time.sleep(4)
+            self._self_talk_active = False
+
+        self._self_talk_thread = threading.Thread(target=_talk_loop, daemon=True)
+        self._self_talk_thread.start()
+
+    def _stop_self_talk(self):
+        self._self_talk_active = False
 
     @property
     def mode(self) -> GimbalMode:
@@ -191,13 +249,15 @@ class GimbalArbiter:
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
-                    # INSTANT audio greeting — fires before anything else
+                    # INSTANT harmonic greeting — fires before anything else
                     tp = _get_tone_player()
                     if tp:
                         try:
                             tp.play_mood("greeting")
                         except Exception as e:
                             log.warning(f"Instinct sound failed: {e}")
+                    # Start self-talk babble (status phrases every 4s)
+                    self._start_self_talk()
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.engage("face", dets)
@@ -267,11 +327,13 @@ class GimbalArbiter:
                     self._mode = GimbalMode.IDLE
                     self._last_disengage_time = time.time()
                     log.info("Instinct released: no targets")
-                    # Goodbye sound
+                    # Stop self-talk
+                    self._stop_self_talk()
+                    # Goodbye chord
                     tp = _get_tone_player()
                     if tp:
                         try:
-                            tp.play_mood("sad")
+                            tp.play_mood("goodbye")
                         except Exception:
                             pass
                     if self._wake_recorder:
