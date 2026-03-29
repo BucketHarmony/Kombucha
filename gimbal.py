@@ -121,33 +121,8 @@ class GimbalArbiter:
 
         self._last_disengage_time = 0.0
 
-        # Per-mood sound cooldowns to prevent audio spam
-        self._sound_cooldowns = {
-            "greeting": 30.0,
-            "curious": 60.0,
-            "goodbye": 30.0,
-        }
-        self._last_sound_time = {}  # mood -> timestamp
-
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
-
-    def _play_sound_throttled(self, mood: str) -> bool:
-        """Play a mood sound if cooldown has elapsed. Returns True if played."""
-        now = time.time()
-        cooldown = self._sound_cooldowns.get(mood, 15.0)
-        last = self._last_sound_time.get(mood, 0.0)
-        if now - last < cooldown:
-            return False
-        tp = _get_tone_player()
-        if tp:
-            try:
-                tp.play_mood(mood)
-                self._last_sound_time[mood] = now
-                return True
-            except Exception as e:
-                log.warning(f"Sound failed ({mood}): {e}")
-        return False
 
     def _start_self_talk(self):
         """Start background self-talk babble during sustained face interaction."""
@@ -317,8 +292,37 @@ class GimbalArbiter:
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
-                    # Throttled greeting — prevents spam on rapid engage/disengage
-                    self._play_sound_throttled("greeting")
+                    # INSTANT detect trill + name flirtation
+                    tp = _get_tone_player()
+                    if tp:
+                        try:
+                            # Get face size for flirtation intensity
+                            face_pct = 0.1
+                            if target:
+                                face_pct = (target.get("w", 50) * target.get("h", 50)) / (CAPTURE_W * CAPTURE_H)
+                            from audio_harmony import render_face_detect
+                            import struct as _struct
+                            samples = render_face_detect(face_pct)
+                            if samples:
+                                import tempfile, wave as _wave
+                                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+                                    tmp = f.name
+                                clamped = [max(-1.0, min(1.0, s)) for s in samples]
+                                int_s = [int(s * 32767) for s in clamped]
+                                data = _struct.pack('<%dh' % len(int_s), *int_s)
+                                with _wave.open(tmp, 'w') as w:
+                                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+                                    w.writeframes(data)
+                                import subprocess
+                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except Exception as e:
+                            log.warning(f"Face detect sound failed: {e}")
+                            # Fallback to simple greeting
+                            try:
+                                tp.play_mood("greeting")
+                            except Exception:
+                                pass
                     # Start self-talk babble (status phrases every 4s)
                     self._start_self_talk()
                     # Crop and save face for recognition training
@@ -372,8 +376,35 @@ class GimbalArbiter:
 
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
-                    # Throttled curious chirp for motion
-                    self._play_sound_throttled("curious")
+                    # Motion warble — scales with motion size
+                    tp = _get_tone_player()
+                    if tp:
+                        try:
+                            # Get motion area as fraction of frame
+                            regions = cv_snap.get("motion_regions", [])
+                            total_area = sum(r[2] * r[3] for r in regions) if regions else 500
+                            motion_pct = total_area / (CAPTURE_W * CAPTURE_H)
+                            from audio_harmony import render_motion_detect
+                            import struct as _struct
+                            samples = render_motion_detect(motion_pct)
+                            if samples:
+                                import tempfile, wave as _wave
+                                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+                                    tmp = f.name
+                                clamped = [max(-1.0, min(1.0, s)) for s in samples]
+                                int_s = [int(s * 32767) for s in clamped]
+                                data = _struct.pack('<%dh' % len(int_s), *int_s)
+                                with _wave.open(tmp, 'w') as w:
+                                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+                                    w.writeframes(data)
+                                import subprocess
+                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        except Exception:
+                            try:
+                                tp.play_mood("curious")
+                            except Exception:
+                                pass
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.engage("motion", dets)
@@ -393,8 +424,13 @@ class GimbalArbiter:
                     log.info("Instinct released: no targets")
                     # Stop self-talk
                     self._stop_self_talk()
-                    # Throttled goodbye chord
-                    self._play_sound_throttled("goodbye")
+                    # Goodbye chord
+                    tp = _get_tone_player()
+                    if tp:
+                        try:
+                            tp.play_mood("goodbye")
+                        except Exception:
+                            pass
                     if self._wake_recorder:
                         self._wake_recorder.disengage()
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})

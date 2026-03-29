@@ -291,6 +291,83 @@ def compose_status_phrase(state):
 # MOOD CHORDS — harmonic versions of the original moods
 # =========================================================================
 
+def render_face_detect(face_size_pct=0.2):
+    """Face detection: sharp detect trill then harmonic name flirtation.
+
+    face_size_pct: how much of frame the face fills (0.0-1.0).
+    Small face = distant = quieter, shorter flirtation.
+    Big face = close = louder, richer, longer.
+    """
+    vol = 0.5 + face_size_pct * 0.5  # 0.5-1.0
+
+    # 1. Detect trill — rapid ascending staccato chord burst
+    trill = _concat(
+        _render_chord(500, 'power', 40, vol),
+        _silence(15),
+        _render_chord(650, 'power', 40, vol),
+        _silence(15),
+        _render_chord(800, 'major', 50, vol),
+    )
+
+    # 2. Name flirtation — warm harmonic phrase that lingers
+    #    Bigger face = more voices, wider chord, longer sustain
+    if face_size_pct > 0.3:
+        # Close — full warm flirtation
+        flirt = _concat(
+            _silence(30),
+            _render_harmonic_chirp(400, 700, 'warm', 150, vol),
+            _render_chord(700, 'bright', 200, vol * 0.9),
+            _render_harmonic_chirp(700, 600, 'major7', 120, vol * 0.8),
+        )
+    elif face_size_pct > 0.1:
+        # Medium distance
+        flirt = _concat(
+            _silence(30),
+            _render_harmonic_chirp(400, 600, 'major', 120, vol),
+            _render_chord(600, 'warm', 150, vol * 0.8),
+        )
+    else:
+        # Far away — just a curious acknowledgment
+        flirt = _concat(
+            _silence(30),
+            _render_chord(450, 'sus4', 100, vol * 0.7),
+            _render_harmonic_chirp(450, 550, 'major', 80, vol * 0.6),
+        )
+
+    return _concat(trill, flirt)
+
+
+def render_motion_detect(motion_area_pct=0.05):
+    """Motion detection: low gloup that doubles in twiterpation with motion size.
+
+    motion_area_pct: fraction of frame covered by motion (0.0-1.0).
+    Tiny motion = single low gloup.
+    Big motion = cascading doubled warble.
+    """
+    # Base "gloup" — low frequency bubble
+    root = 150  # Deep, guttural
+    gloup = _concat(
+        _render_harmonic_chirp(root, root * 1.5, 'power', 80, 0.7),
+        _render_harmonic_chirp(root * 1.5, root * 0.8, 'minor', 60, 0.6),
+    )
+
+    # Doubling twiterpation — each layer adds a warble at increasing pitch
+    layers = min(6, max(1, int(motion_area_pct * 60)))  # 1-6 layers
+
+    twiterpation = []
+    for i in range(layers):
+        freq = root * (1.5 + i * 0.4)  # Each layer higher
+        tremolo = 4 + i * 3  # Faster tremolo each layer
+        duration = max(40, 100 - i * 10)  # Shorter each layer
+        twiterpation.append(
+            _render_tremolo_chord(freq, 'minor' if i % 2 == 0 else 'sus4',
+                                  duration, tremolo, 0.5 + i * 0.08))
+        if i < layers - 1:
+            twiterpation.append(_silence(15))
+
+    return _concat(gloup, _silence(20), *twiterpation)
+
+
 HARMONIC_MOODS = {
     'greeting': [
         ('chord', 300, 'major', 100),
