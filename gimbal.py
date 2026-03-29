@@ -680,7 +680,7 @@ class Heartbeat(threading.Thread):
                     if cmd:
                         self._send(cmd)
                 if light > 0 or (light == 0 and spd == 0):
-                    lcmd = validate_tcode(132, {"IO4": 0, "IO5": light})
+                    lcmd = validate_tcode(132, {"IO4": 0, "IO5": min(light, 25)})  # Cap at 10%
                     if lcmd:
                         self._send(lcmd)
                 time.sleep(delay)
