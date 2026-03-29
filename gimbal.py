@@ -121,6 +121,10 @@ class GimbalArbiter:
 
         self._last_disengage_time = 0.0
 
+        # Object detection audio tracking
+        self._known_objects: set = set()  # Objects we've already announced
+        self._last_object_sound = 0.0
+
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
 
@@ -441,6 +445,47 @@ class GimbalArbiter:
                     self._smooth_cx = 0.5
                     self._smooth_cy = 0.5
                     self._drain_one()
+
+            # Object detection audio — announce new objects by spelling their name
+            now_obj = time.time()
+            if self._cv_pipeline and now_obj - self._last_object_sound > 5.0:
+                try:
+                    dets = self._cv_pipeline.get_detections()
+                    for det in dets:
+                        name = det.get("class_name", "")
+                        conf = det.get("confidence", 0)
+                        if not name or name == "person" or conf < 0.4:
+                            continue
+                        if name not in self._known_objects:
+                            self._known_objects.add(name)
+                            self._last_object_sound = now_obj
+                            log.info(f"New object detected: {name} ({conf:.0%})")
+                            # Play in background thread
+                            def _play_obj(n=name, c=conf):
+                                try:
+                                    from audio_harmony import render_object_detect
+                                    import struct as _s, tempfile, wave as _w, subprocess as _sp
+                                    samples = render_object_detect(n, c)
+                                    if samples:
+                                        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+                                            tmp = f.name
+                                        clamped = [max(-1.0, min(1.0, s)) for s in samples]
+                                        int_s = [int(s * 32767) for s in clamped]
+                                        data = _s.pack('<%dh' % len(int_s), *int_s)
+                                        with _w.open(tmp, 'w') as w:
+                                            w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+                                            w.writeframes(data)
+                                        _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                            stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                                except Exception:
+                                    pass
+                            threading.Thread(target=_play_obj, daemon=True).start()
+                            break  # One announcement per tick cycle
+                except Exception:
+                    pass
+                # Reset known objects every 5 minutes so re-appearances get announced
+                if len(self._known_objects) > 20:
+                    self._known_objects.clear()
 
             return None
 

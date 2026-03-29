@@ -368,6 +368,57 @@ def render_motion_detect(motion_area_pct=0.05):
     return _concat(gloup, _silence(20), *twiterpation)
 
 
+def render_object_detect(class_name, confidence=0.5):
+    """Object detection: deep thump then harmonic staccato spelling of the name.
+
+    Each letter maps to a pitch and chord quality. The object's name
+    becomes a unique melodic signature — 'chair' always sounds like 'chair'.
+    """
+    vol = 0.4 + confidence * 0.5  # 0.4-0.9 based on confidence
+
+    # 1. Deep thump — low power chord with fast attack
+    thump = _concat(
+        _render_chord(80, 'power', 60, vol * 1.2),
+        _render_harmonic_chirp(80, 120, 'power', 40, vol),
+        _silence(30),
+    )
+
+    # 2. Letter-to-music mapping
+    # Each letter gets a root frequency and chord quality
+    LETTER_FREQ = {
+        'a': 440, 'b': 494, 'c': 523, 'd': 587, 'e': 659,
+        'f': 349, 'g': 392, 'h': 415, 'i': 466, 'j': 277,
+        'k': 311, 'l': 330, 'm': 370, 'n': 294, 'o': 523,
+        'p': 554, 'q': 233, 'r': 587, 's': 622, 't': 659,
+        'u': 370, 'v': 415, 'w': 247, 'x': 277, 'y': 311,
+        'z': 233,
+    }
+    # Vowels get major/warm, consonants get power/sus4
+    VOWELS = set('aeiou')
+    LETTER_CHORD = {
+        True: ['major', 'warm', 'bright', 'major7'],   # vowels — open, resonant
+        False: ['power', 'sus4', 'minor', 'dim'],       # consonants — percussive
+    }
+
+    # 3. Staccato spelling
+    name = class_name.lower().replace(' ', '')[:8]  # Cap at 8 letters
+    staccato = []
+    for i, ch in enumerate(name):
+        if ch not in LETTER_FREQ:
+            continue
+        freq = LETTER_FREQ[ch]
+        is_vowel = ch in VOWELS
+        chords = LETTER_CHORD[is_vowel]
+        chord_type = chords[i % len(chords)]
+
+        # Vowels sustain slightly longer, consonants are snappy
+        dur = 70 if is_vowel else 45
+        staccato.append(_render_chord(freq, chord_type, dur, vol * 0.8))
+        staccato.append(_silence(20))
+
+    return _concat(thump, *staccato)
+
+
 HARMONIC_MOODS = {
     'greeting': [
         ('chord', 300, 'major', 100),
