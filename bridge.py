@@ -1284,7 +1284,8 @@ def startup():
 
         # Heartbeat
         if gimbal_arbiter:
-            heartbeat = Heartbeat(gimbal_arbiter, serial_port, _serial_lock)
+            heartbeat = Heartbeat(gimbal_arbiter, serial_port, _serial_lock,
+                                  cv_pipeline=cv_pipeline)
             heartbeat.start()
             log.info("Heartbeat started")
     else:

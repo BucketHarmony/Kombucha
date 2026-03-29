@@ -96,6 +96,10 @@ class GimbalArbiter:
         self._cv_pipeline = cv_pipeline
         self._lock = threading.Lock()
 
+        # Self-flinch fix: suppress motion detection after gimbal moves
+        # to prevent MOG2 from interpreting view change as motion
+        self._suppress_after_move = True
+
         self._mode = GimbalMode.IDLE
         self._queue: deque[QueuedLook] = deque(maxlen=CV_QUEUE_MAX_DEPTH)
         self._last_target_time = 0.0
@@ -132,6 +136,15 @@ class GimbalArbiter:
 
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
+
+    def _suppress_motion(self, duration_s: float = 1.0):
+        """Suppress motion detection after gimbal movement to prevent self-flinch.
+
+        The gimbal moving changes the camera view, which MOG2 interprets as
+        motion, which triggers instinct, which steals the gimbal back.
+        """
+        if self._cv_pipeline:
+            self._cv_pipeline.suppress_motion(duration_s)
 
     def _start_self_talk(self):
         """Start background self-talk babble during sustained face interaction."""
@@ -295,6 +308,7 @@ class GimbalArbiter:
                     self._cmd_pan = float(pan)
                     self._cmd_tilt = float(tilt)
                     self._play_servo_sound(old_p, pan, old_t, tilt)
+                    self._suppress_motion()
                 return {"result": "ok", "mode": "manual"}
 
             if self._mode == GimbalMode.INSTINCT:
@@ -316,6 +330,7 @@ class GimbalArbiter:
                 self._cmd_pan = float(pan)
                 self._cmd_tilt = float(tilt)
                 self._play_servo_sound(old_p, pan, old_t, tilt)
+                self._suppress_motion()
             return {"result": "ok", "mode": self._mode.value}
 
     def set_mode(self, mode_str: str) -> dict:
@@ -509,6 +524,7 @@ class GimbalArbiter:
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})
                     if center_cmd:
                         self._send(center_cmd)
+                        self._suppress_motion(2.0)  # Longer suppress for return-to-center
                     self._cmd_pan = 0.0
                     self._cmd_tilt = 0.0
                     self._smooth_cx = 0.5
@@ -618,6 +634,7 @@ class GimbalArbiter:
                 })
                 if cmd:
                     self._send(cmd)
+                    self._suppress_motion()
                 self._mode = GimbalMode.COGNITIVE
                 return
 
@@ -695,11 +712,13 @@ class Heartbeat(threading.Thread):
         ]),
     ]
 
-    def __init__(self, gimbal_arbiter: GimbalArbiter, ser, serial_lock):
+    def __init__(self, gimbal_arbiter: GimbalArbiter, ser, serial_lock,
+                 cv_pipeline=None):
         super().__init__(daemon=True)
         self._gimbal_arbiter = gimbal_arbiter
         self._ser = ser
         self._serial_lock = serial_lock
+        self._cv_pipeline = cv_pipeline
         self._running = False
         self._frustration = 0
         self._last_gesture = 0.0
@@ -740,6 +759,11 @@ class Heartbeat(threading.Thread):
 
             name, sequence = random.choice(gestures)
             log.info(f"Heartbeat: {name} (frustration={frust})")
+
+            # Suppress motion for the full gesture to prevent self-flinch
+            if self._cv_pipeline:
+                total_dur = sum(d for _, _, _, _, d in sequence) + 1.0
+                self._cv_pipeline.suppress_motion(total_dur)
 
             for pan, tilt, spd, light, delay in sequence:
                 if not self._running:
