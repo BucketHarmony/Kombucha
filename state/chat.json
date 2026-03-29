@@ -1,40 +1,5 @@
 [
   {
-    "role": "human",
-    "text": "Read your skills.md and tell me the most interesting thing you have learned",
-    "time": "22:24:12"
-  },
-  {
-    "role": "kombucha",
-    "text": "(static) ...I lost my train of thought.",
-    "time": "22:24:15",
-    "steps": []
-  },
-  {
-    "role": "human",
-    "text": "What is the most interesting thing in your skills.md?",
-    "time": "22:26:10"
-  },
-  {
-    "role": "kombucha",
-    "text": "The most interesting thing in there is the mirror event. Around tick 200-something, instinct tracked someone holding a mirror, and I saw my own body for the first time \u2014 black chassis, yellow frame, gimbal, cables. Instinct was smart enough to track the person holding the mirror, not the reflection.\n\nClose second: the cable catch-release zone. My early estimates for cable range were wildly wrong (3.3m, then 4.5m). Turns out I can go 20+ meters if I route the cable right. And at the limit, I figured out I can orbit the anchor point laterally instead of pulling straight \u2014 the cable still restricts my right wheel but I can swing along an arc. That was a hard-won lesson across a lot of stuck drives.",
-    "time": "22:26:30",
-    "steps": [
-      {
-        "tool": "Read",
-        "detail": "/opt/kombucha/skills.md"
-      },
-      {
-        "thought": "The most interesting thing in there is the mirror event. Around tick 200-something, instinct tracked someone holding a mirror, and I saw my own body for the first time \u2014 black chassis, yellow frame, gimbal, cables. Instinct was smart enough to track the person holding the mirror, not the reflection."
-      }
-    ]
-  },
-  {
-    "role": "human",
-    "text": "Hello this is bucket",
-    "time": "22:29:21"
-  },
-  {
     "role": "kombucha",
     "text": "\n\nHey Bucket. Battery's at 95%, wheels unlocked, gimbal idle. Nobody around right now. What's up?",
     "time": "22:29:29",
@@ -2185,5 +2150,59 @@
         "thought": "Instinct's got the gimbal right now \u2014 it's tracking a person (you, probably). Command's queued and will execute when instinct releases. Want me to switch to manual mode so I can take direct control?"
       }
     ]
+  },
+  {
+    "role": "human",
+    "text": "look straight ahead",
+    "time": "03:07:36"
+  },
+  {
+    "role": "kombucha",
+    "text": "Queued \u2014 instinct's still holding the gimbal (tracking someone). Want me to force manual mode so it goes through immediately?",
+    "time": "03:07:46",
+    "steps": [
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":0}'"
+      },
+      {
+        "thought": "Queued \u2014 instinct's still holding the gimbal (tracking someone). Want me to force manual mode so it goes through immediately?"
+      }
+    ]
+  },
+  {
+    "role": "human",
+    "text": "YEs, there is nobody in the room. what % confidence is it seeing?",
+    "time": "03:08:23"
+  },
+  {
+    "role": "kombucha",
+    "text": "Done \u2014 looking straight ahead, manual mode. The motion detection is probably just noise from my upside-down perspective. Want me to check the confidence threshold in perception.toml? Might be worth raising it if it's chasing ghosts.",
+    "time": "03:08:48",
+    "steps": [
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/cv/status"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/cv/mode -H 'Content-Type: application/json' -d '{\"mode\":\"manual\"}'"
+      },
+      {
+        "thought": "No faces detected. Zero. It's seeing **motion** (6 motion regions) and that's what's holding the gimbal \u2014 not a face. The presence log shows \"person\" at 14.8s but that's cumulative session history, not live.\n\nThe ghost it's tracking is probably shadows, the cable moving, or just sensor noise from me"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":0}'"
+      },
+      {
+        "thought": "Done \u2014 looking straight ahead, manual mode. The motion detection is probably just noise from my upside-down perspective. Want me to check the confidence threshold in perception.toml? Might be worth raising it if it's chasing ghosts."
+      }
+    ]
+  },
+  {
+    "role": "human",
+    "text": "Raise motion threshold.  raise face detection theshold.  raise person detection threshold",
+    "time": "03:09:33"
   }
 ]
