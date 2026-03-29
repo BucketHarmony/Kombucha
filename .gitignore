@@ -10,3 +10,4 @@ logs/
 *.mp4
 *.jpg
 .pytest_cache/
+media/audio/*.wav
