@@ -223,13 +223,17 @@ class GimbalArbiter:
                 if det.get("class_name") != "person" and det.get("class_id") != 0:
                     continue
                 x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-                # Expand crop region by 30% for context
-                pad_x = int(w * 0.3)
-                pad_y = int(h * 0.3)
-                x1 = max(0, x - pad_x)
+                # Take top 35% of person bbox (head/face region)
+                face_h = int(h * 0.35)
+                face_w = int(w * 0.8)  # Slightly narrower than body
+                face_x = x + int(w * 0.1)  # Center the narrower crop
+                # Pad by 20% for context
+                pad_x = int(face_w * 0.2)
+                pad_y = int(face_h * 0.2)
+                x1 = max(0, face_x - pad_x)
                 y1 = max(0, y - pad_y)
-                x2 = min(frame.shape[1], x + w + pad_x)
-                y2 = min(frame.shape[0], y + h + pad_y)
+                x2 = min(frame.shape[1], face_x + face_w + pad_x)
+                y2 = min(frame.shape[0], y + face_h + pad_y)
                 crop = frame[y1:y2, x1:x2]
                 if crop.size == 0:
                     continue
