@@ -941,6 +941,68 @@ def get_recent_audio(n: int = 10):
     ]
 
 
+@app.get("/audio/events")
+def get_audio_events(n: int = 30):
+    """Return recent audio events with trigger reasons from manifest."""
+    manifest = Path("/opt/kombucha/media/audio/manifest.jsonl")
+    if not manifest.exists():
+        return []
+    entries = []
+    for line in manifest.read_text().strip().split("\n"):
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    # Return last N, newest first
+    recent = entries[-n:]
+    recent.reverse()
+    results = []
+    for e in recent:
+        label = e.get("label", "?")
+        fname = e.get("filename", "")
+        ts = e.get("timestamp", "")[:19]  # trim microseconds
+        time_short = ts[11:19] if len(ts) > 11 else ts
+        # Determine trigger reason from label
+        reasons = {
+            "greeting": "face detected — hello",
+            "greeting_known": "known face — Bucket?",
+            "greeting_unknown": "unknown face",
+            "goodbye": "target lost — womp womp",
+            "curious": "motion detected",
+            "alert": "sustained detection",
+            "happy": "positive event",
+            "sad": "disengage",
+            "startled": "sudden detection",
+            "cat_spotted": "cat!",
+            "frustrated": "stuck or blocked",
+            "settled": "idle gesture",
+            "exploring": "moving to new area",
+            "prowling": "searching",
+            "status_phrase": "self-talk status report",
+        }
+        reason = reasons.get(label, label)
+        # Check if it's a face/motion/object detect
+        if "face_detect" in fname or "haar" in fname:
+            reason = "face detected — trill + flirtation"
+        elif "motion_detect" in fname:
+            reason = "motion — gloup + twiterpation"
+        elif "object_" in fname:
+            obj = fname.split("object_")[-1].replace(".wav", "") if "object_" in fname else ""
+            reason = f"object detected: {obj}"
+        elif "servo" in fname or "status" in label:
+            reason = "self-talk status report"
+        results.append({
+            "time": time_short,
+            "label": label,
+            "reason": reason,
+            "file": fname,
+            "harmonic": e.get("harmonic", False),
+        })
+    return results
+
+
 @app.get("/audio/file/{filename}")
 def get_audio_file(filename: str):
     """Serve a specific audio WAV file."""
