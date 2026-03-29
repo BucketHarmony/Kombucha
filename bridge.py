@@ -678,6 +678,17 @@ def clear_plugged():
     return {"result": "ok", "mode": "auto"}
 
 
+@app.post("/camera/reset")
+def reset_camera():
+    """Reset camera to fix frozen frames."""
+    if frame_distributor is None:
+        raise HTTPException(status_code=503, detail="No frame distributor")
+    ok = frame_distributor.reset_camera()
+    if ok:
+        return {"result": "ok", "message": "Camera reset successful"}
+    raise HTTPException(status_code=503, detail="Camera reset failed")
+
+
 @app.post("/frustration")
 def set_frustration(body: FrustrationModel):
     """Set heartbeat frustration level (0=idle, 5=exasperated)."""

@@ -93,6 +93,34 @@ class FrameDistributor(threading.Thread):
                 except queue.Full:
                     pass
 
+    def reset_camera(self) -> bool:
+        """Release and re-open the camera to fix frozen frames."""
+        with self._lock:
+            old_cap = self._cap
+            device = None
+            if old_cap is not None:
+                # Try to get the device path/index before releasing
+                device = old_cap.get(cv2.CAP_PROP_POS_FRAMES)  # just for logging
+                old_cap.release()
+                log.info("Released old camera capture")
+                self._cap = None
+
+        # Brief pause for USB device to settle
+        time.sleep(1.0)
+
+        # Re-init camera using hardware helper
+        from hardware import init_camera
+        new_cap = init_camera()
+        if new_cap is None:
+            log.error("Camera reset failed — could not re-open camera")
+            return False
+
+        with self._lock:
+            self._cap = new_cap
+            self._latest_frame = None  # Force fresh frame
+            log.info("Camera reset successful — new capture active")
+        return True
+
     def stop(self):
         self._running = False
 
