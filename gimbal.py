@@ -798,6 +798,8 @@ class GimbalArbiter:
             self._cmd_tilt = float(new_tilt)
             self._last_track_cmd_time = time.time()
             self._play_servo_sound(old_pan, new_pan, old_tilt, new_tilt)
+            if self._cv_pipeline:
+                self._cv_pipeline.suppress_motion(1.0)
             log.info(
                 f"Tracking → pan={new_pan} tilt={new_tilt} "
                 f"(face@{raw_cx:.2f},{raw_cy:.2f} err={error_x:.2f},{error_y:.2f})"
