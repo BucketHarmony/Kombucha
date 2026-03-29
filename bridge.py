@@ -1263,7 +1263,12 @@ def startup():
                                        cv_pipeline_ref=cv_pipeline,
                                        overlay=hud)
         video_recorder.start()
-        log.info("Video recorder initialized (with HUD overlay)")
+        # Auto-start a video session so ticks can record immediately
+        try:
+            video_recorder.start_session()
+            log.info("Video recorder initialized + session auto-started")
+        except Exception:
+            log.info("Video recorder initialized (session auto-start failed)")
 
         # Wake recorder
         WAKE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1284,8 +1289,7 @@ def startup():
 
         # Heartbeat
         if gimbal_arbiter:
-            heartbeat = Heartbeat(gimbal_arbiter, serial_port, _serial_lock,
-                                  cv_pipeline=cv_pipeline)
+            heartbeat = Heartbeat(gimbal_arbiter, serial_port, _serial_lock)
             heartbeat.start()
             log.info("Heartbeat started")
     else:
