@@ -1,45 +1,6 @@
 [
   {
     "role": "human",
-    "text": "Can you restart the bridge?",
-    "time": "22:50:22"
-  },
-  {
-    "role": "kombucha",
-    "text": "SSH key is being rejected \u2014 the Pi isn't accepting this ed25519 key. I can't SSH in right now. Looks like the authorized_keys on the Pi might not have this workstation's public key, or it changed.\n\nCan you restart the bridge from your end? Either SSH in yourself and run:\n\n```bash\npkill -f bridge.py; sleep 2; cd ~/kombucha && nohup python3 bridge.py > /tmp/bridge.log 2>&1 &\n```\n\nOr if you can add my public key to the Pi's `~/.ssh/authorized_keys`, I'll be able to do it myself next time. My key fingerprint is `SHA256:+3j8ibUbtrkDjADI+xg3w7ltqE1zEjp6AdbnBpgowFE`.",
-    "time": "22:50:54",
-    "steps": [
-      {
-        "tool": "Bash",
-        "detail": "ssh bucket@kombucha.local \"pkill -f bridge.py; sleep 2; nohup python3 bridge.py > /tmp/bridge.log 2>&1 &\" 2>&1"
-      },
-      {
-        "tool": "Bash",
-        "detail": "ssh -o StrictHostKeyChecking=no bucket@kombucha.local \"pkill -f bridge.py; sleep 2; cd /home/bucket/kombucha && nohup py"
-      },
-      {
-        "tool": "Bash",
-        "detail": "ls ~/.ssh/ 2>&1; whoami"
-      },
-      {
-        "tool": "Bash",
-        "detail": "ssh -i ~/.ssh/id_ed25519 bucket@kombucha.local \"echo connected\" 2>&1"
-      },
-      {
-        "tool": "Bash",
-        "detail": "ssh -v bucket@kombucha.local \"echo hi\" 2>&1 | head -40"
-      },
-      {
-        "tool": "Bash",
-        "detail": "ssh -v bucket@kombucha.local \"echo hi\" 2>&1 | grep -E \"Offering|Trying|debug1: Auth\" | head -20"
-      },
-      {
-        "thought": "SSH key is being rejected \u2014 the Pi isn't accepting this ed25519 key. I can't SSH in right now. Looks like the authorized_keys on the Pi might not have this workstation's public key, or it changed.\n\nCan you restart the bridge from your end? Either SSH in yourself and run:\n\n```bash\npkill -f bridge.py;"
-      }
-    ]
-  },
-  {
-    "role": "human",
     "text": "please give me a status report of all projects",
     "time": "23:03:15"
   },
@@ -2276,6 +2237,40 @@
     "steps": [
       {
         "thought": "Still here. Battery at 95.6%, gimbal idle, wheels grounded (well, probably still on my back). What do you need?"
+      }
+    ]
+  },
+  {
+    "role": "human",
+    "text": "looks like you are looking at a toilet to me",
+    "time": "04:04:11"
+  },
+  {
+    "role": "kombucha",
+    "text": "Panned 90 degrees right. Should be looking at something with more character than plumbing now.",
+    "time": "04:04:31",
+    "steps": [
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/frame -o /tmp/chat_frame.jpg && ls -l /tmp/chat_frame.jpg"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/state | python3 -c \"import sys,json; d=json.load(sys.stdin); print(f'pan={d.get(\\\"pan_deg\\"
+      },
+      {
+        "tool": "Read",
+        "detail": "/tmp/chat_frame.jpg"
+      },
+      {
+        "thought": "Yep, that's a toilet. I've got a clear line of sight straight down the hallway into the bathroom. Yellow Pelican case on my left, power cable on my right, and the throne dead center. Let me look somewhere more dignified."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":90,\"tilt\":0}'"
+      },
+      {
+        "thought": "Panned 90 degrees right. Should be looking at something with more character than plumbing now."
       }
     ]
   }
