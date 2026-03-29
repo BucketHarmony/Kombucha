@@ -340,7 +340,7 @@ class GimbalArbiter:
                         self._wake_recorder.engage("face", dets)
                     now = time.time()
                     if now - self._last_light_change > 3.0:
-                        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 255})
+                        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})  # 10% brightness
                         if light_cmd:
                             self._send(light_cmd)
                         self._last_light_change = now
@@ -367,7 +367,7 @@ class GimbalArbiter:
                     # Pulse light while tracking face (1s on, 2s off cycle)
                     now_t = time.time()
                     if has_face and now_t - self._last_light_change > 3.0:
-                        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 180})
+                        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})  # 10% brightness
                         if light_cmd:
                             self._send(light_cmd)
                         self._last_light_change = now_t

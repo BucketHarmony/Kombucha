@@ -18,6 +18,7 @@ The Kombucha Tonal Language:
 """
 
 import math
+import random
 import struct
 import subprocess
 import wave
@@ -300,13 +301,14 @@ def render_face_detect(face_size_pct=0.2):
     """
     vol = 0.5 + face_size_pct * 0.5  # 0.5-1.0
 
-    # 1. Detect trill — rapid ascending staccato chord burst
+    # 1. Detect trill — rapid ascending staccato chord burst (randomized)
+    base = _humanize_freq(500, 50)
     trill = _concat(
-        _render_chord(500, 'power', 40, vol),
-        _silence(15),
-        _render_chord(650, 'power', 40, vol),
-        _silence(15),
-        _render_chord(800, 'major', 50, vol),
+        _render_chord(base, _humanize_chord('power'), _humanize_ms(40), vol),
+        _silence(_humanize_ms(15, 0.5)),
+        _render_chord(_humanize_freq(base * 1.3, 30), _humanize_chord('power'), _humanize_ms(40), vol),
+        _silence(_humanize_ms(15, 0.5)),
+        _render_chord(_humanize_freq(base * 1.6, 30), _humanize_chord('major'), _humanize_ms(50), vol),
     )
 
     # 2. Name flirtation — warm harmonic phrase that lingers
@@ -344,8 +346,8 @@ def render_motion_detect(motion_area_pct=0.05):
     Tiny motion = single low gloup.
     Big motion = cascading doubled warble.
     """
-    # Base "gloup" — low frequency bubble
-    root = 150  # Deep, guttural
+    # Base "gloup" — low frequency bubble (randomized)
+    root = _humanize_freq(150, 40)  # Deep, guttural with variation
     gloup = _concat(
         _render_harmonic_chirp(root, root * 1.5, 'power', 80, 0.7),
         _render_harmonic_chirp(root * 1.5, root * 0.8, 'minor', 60, 0.6),
@@ -376,11 +378,12 @@ def render_object_detect(class_name, confidence=0.5):
     """
     vol = 0.4 + confidence * 0.5  # 0.4-0.9 based on confidence
 
-    # 1. Deep thump — low power chord with fast attack
+    # 1. Deep thump — low power chord with fast attack (randomized)
+    thump_root = _humanize_freq(80, 20)
     thump = _concat(
-        _render_chord(80, 'power', 60, vol * 1.2),
-        _render_harmonic_chirp(80, 120, 'power', 40, vol),
-        _silence(30),
+        _render_chord(thump_root, 'power', _humanize_ms(60), vol * 1.2),
+        _render_harmonic_chirp(thump_root, thump_root * 1.5, 'power', _humanize_ms(40), vol),
+        _silence(_humanize_ms(30, 0.4)),
     )
 
     # 2. Letter-to-music mapping
@@ -406,13 +409,13 @@ def render_object_detect(class_name, confidence=0.5):
     for i, ch in enumerate(name):
         if ch not in LETTER_FREQ:
             continue
-        freq = LETTER_FREQ[ch]
+        freq = _humanize_freq(LETTER_FREQ[ch], 15)  # Slight pitch variation
         is_vowel = ch in VOWELS
         chords = LETTER_CHORD[is_vowel]
         chord_type = chords[i % len(chords)]
 
         # Vowels sustain slightly longer, consonants are snappy
-        dur = 70 if is_vowel else 45
+        dur = _humanize_ms(70 if is_vowel else 45, 0.15)
         staccato.append(_render_chord(freq, chord_type, dur, vol * 0.8))
         staccato.append(_silence(20))
 
@@ -496,24 +499,60 @@ HARMONIC_MOODS = {
 }
 
 
+def _humanize_freq(freq, variance_cents=30):
+    """Randomly shift frequency by up to variance_cents."""
+    shift = random.uniform(-variance_cents, variance_cents)
+    return freq * (SEMITONE ** (shift / 100))
+
+
+def _humanize_ms(ms, variance_pct=0.2):
+    """Randomly stretch/compress duration."""
+    return max(20, int(ms * random.uniform(1 - variance_pct, 1 + variance_pct)))
+
+
+def _humanize_chord(chord_type):
+    """Occasionally substitute a related chord for variety."""
+    substitutions = {
+        'major': ['major', 'major', 'major7', 'warm', 'sus4'],
+        'minor': ['minor', 'minor', 'minor7', 'dark', 'sus4'],
+        'power': ['power', 'power', 'sus4', 'open5ths'],
+        'warm': ['warm', 'warm', 'bright', 'major7'],
+        'bright': ['bright', 'bright', 'warm', 'major7'],
+        'dark': ['dark', 'dark', 'minor7', 'minor'],
+        'sus4': ['sus4', 'sus4', 'power', 'major'],
+    }
+    options = substitutions.get(chord_type, [chord_type])
+    return random.choice(options)
+
+
 def render_harmonic_mood(mood, volume=1.0):
-    """Render a harmonic mood sequence to samples."""
+    """Render a harmonic mood sequence with random variation."""
     seq = HARMONIC_MOODS.get(mood, HARMONIC_MOODS.get('settled'))
     parts = []
     for step in seq:
         kind = step[0]
         if kind == 'chord':
             _, root, chord_type, ms = step
+            root = _humanize_freq(root)
+            ms = _humanize_ms(ms)
+            chord_type = _humanize_chord(chord_type)
             parts.append(_render_chord(root, chord_type, ms, volume))
         elif kind == 'harmonic_chirp':
             _, start, end, chord_type, ms = step
+            start = _humanize_freq(start)
+            end = _humanize_freq(end)
+            ms = _humanize_ms(ms)
+            chord_type = _humanize_chord(chord_type)
             parts.append(_render_harmonic_chirp(start, end, chord_type, ms, volume))
         elif kind == 'tremolo_chord':
             _, root, chord_type, ms, trem_hz = step
+            root = _humanize_freq(root)
+            ms = _humanize_ms(ms)
+            trem_hz *= random.uniform(0.8, 1.3)
             parts.append(_render_tremolo_chord(root, chord_type, ms, trem_hz, volume))
         elif kind == 'silence':
             _, ms = step
-            parts.append(_silence(ms))
+            parts.append(_silence(_humanize_ms(ms, 0.4)))
     return _concat(*parts)
 
 
