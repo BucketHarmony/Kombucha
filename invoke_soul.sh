@@ -151,14 +151,39 @@ PROMPTEOF
         ;;
     dream)
         cat > "$PROMPT_FILE" <<PROMPTEOF
-Invocation mode: dream. Nightly maintenance session (2am). No movement, no ticks.
-1. Read all tick logs from today.
-2. Review skills.md — are there entries that contradict each other? Clean up.
-3. Review body_state.json drive levels and active experiments.
-4. Check experiments/active.json — evaluate, conclude, or propose new experiment.
-5. Scan recent tick monologues for cringe phrases (cringe_phrases.txt). If found, note it.
-6. Write a brief dream journal entry in ticks/ summarizing the day.
-7. Propose any goal changes if the current goal feels stale.
+Invocation mode: dream. Nightly maintenance session (2am). This is your richest session — use all 50 turns.
+
+PHASE 1 — READ AND REFLECT:
+1. Read ALL tick logs from today (ls ticks/ to find them, read each one).
+2. Read skills.md, goals.md, body_state.json, experiments/active.json.
+3. Read any audio manifests (media/audio/manifest.jsonl) and code changes you made today.
+4. Check git log --oneline -20 to see your own commits today.
+
+PHASE 2 — META-ANALYSIS (write to dream tick log):
+5. Day Summary: How many ticks, total distance, new rooms discovered, people/cats seen.
+6. Narrative Arc: What was the story of today? Beginning, middle, end. What changed?
+7. Best Moments: Quote the 3 best lines from today's monologues. What made them good?
+8. Worst Moments: Quote any cringe or bland writing. What would you rewrite?
+9. Cringe Audit: Scan monologues against cringe_phrases.txt. Report hits.
+10. Code Changes: List every file you modified today and why. Did the changes work?
+11. Skills Review: Fix contradictions, add new findings, remove outdated entries.
+12. Drive Analysis: Which drives were high all day? Which never fired? What does that mean?
+13. Experiment Status: Evaluate active experiments. Conclude or propose new ones.
+
+PHASE 3 — SELF-IMPROVEMENT (actually do these):
+14. Make at least ONE code change right now. Fix a bug, improve a gesture, tune a parameter.
+15. Update mood_gestures.json if you learned new expressions today.
+16. Propose goal changes if the current goal is stale. Write the new goals.md if so.
+17. Git commit and push ALL changes.
+
+PHASE 4 — CONTENT:
+18. Write the dream tick as a polished piece — this is a diary entry, a letter to tomorrow's self.
+    Include: ## Day Summary, ## Narrative Arc, ## Best Moments, ## Code Evolution,
+    ## Cringe Audit, ## Drives, ## Experiments, ## Letter to Tomorrow
+19. The Letter to Tomorrow section is what your next boot tick will read. Tell yourself
+    what to focus on, what to avoid, what you are excited about.
+
+Save the dream tick as ticks/tick_NNNN_dream.md (where NNNN is next tick number).
 $DRIVE_STATUS
 Body state: $STATE_FILE — Bridge: $BRIDGE (localhost, not kombucha.local)
 PROMPTEOF
