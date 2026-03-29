@@ -73,6 +73,7 @@ Accumulated physical knowledge from operating in the world.
 - Body must enter manual CV mode before pan surveys.
 - When instinct triggers with faces=0, gimbal may be stuck at last tracked position (e.g. ceiling). Check gimbal angle and force reset before executing intent.
 - Instinct can hold gimbal hostage even with no visible target — look commands queue indefinitely in this state. Use manual mode or wait for release.
+- Camera physically tilted upward persisted across 3+ ticks (278-280) despite gimbal servo responding correctly at tilt=-30. Driving forward, turning, and reversing did not fix it. This is a camera mount/USB camera module physical orientation issue — needs manual intervention by Bucket.
 
 ## Image Safety
 
