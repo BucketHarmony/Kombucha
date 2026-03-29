@@ -14,6 +14,11 @@ import time
 from collections import deque
 from typing import Optional
 
+import cv2
+import numpy as np
+from datetime import datetime
+from pathlib import Path
+
 from hardware import (
     validate_tcode, send_tcode, _clamp,
     CAPTURE_W, CAPTURE_H,
@@ -116,8 +121,33 @@ class GimbalArbiter:
 
         self._last_disengage_time = 0.0
 
+        # Per-mood sound cooldowns to prevent audio spam
+        self._sound_cooldowns = {
+            "greeting": 30.0,
+            "curious": 60.0,
+            "goodbye": 30.0,
+        }
+        self._last_sound_time = {}  # mood -> timestamp
+
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
+
+    def _play_sound_throttled(self, mood: str) -> bool:
+        """Play a mood sound if cooldown has elapsed. Returns True if played."""
+        now = time.time()
+        cooldown = self._sound_cooldowns.get(mood, 15.0)
+        last = self._last_sound_time.get(mood, 0.0)
+        if now - last < cooldown:
+            return False
+        tp = _get_tone_player()
+        if tp:
+            try:
+                tp.play_mood(mood)
+                self._last_sound_time[mood] = now
+                return True
+            except Exception as e:
+                log.warning(f"Sound failed ({mood}): {e}")
+        return False
 
     def _start_self_talk(self):
         """Start background self-talk babble during sustained face interaction."""
@@ -166,6 +196,44 @@ class GimbalArbiter:
 
     def _stop_self_talk(self):
         self._self_talk_active = False
+
+    def _save_face_crops(self, dets):
+        """Crop and save detected faces for recognition training."""
+        if not self._cv_pipeline or not hasattr(self._cv_pipeline, '_queue'):
+            return
+        try:
+            # Get the latest frame from the frame distributor
+            # (wake_recorder has a ref to frame_dist)
+            if not self._wake_recorder or not self._wake_recorder._frame_dist:
+                return
+            ret, frame, _ = self._wake_recorder._frame_dist.get_latest_frame()
+            if not ret or frame is None:
+                return
+
+            face_dir = Path("/opt/kombucha/media/faces/unknown")
+            face_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            for i, det in enumerate(dets):
+                if det.get("class_name") != "person" and det.get("class_id") != 0:
+                    continue
+                x, y, w, h = det["x"], det["y"], det["w"], det["h"]
+                # Expand crop region by 30% for context
+                pad_x = int(w * 0.3)
+                pad_y = int(h * 0.3)
+                x1 = max(0, x - pad_x)
+                y1 = max(0, y - pad_y)
+                x2 = min(frame.shape[1], x + w + pad_x)
+                y2 = min(frame.shape[0], y + h + pad_y)
+                crop = frame[y1:y2, x1:x2]
+                if crop.size == 0:
+                    continue
+                fname = f"face_{ts}_{i:02d}.jpg"
+                cv2.imwrite(str(face_dir / fname), crop,
+                            [cv2.IMWRITE_JPEG_QUALITY, 90])
+                log.info(f"Face crop saved: {fname} ({w}x{h})")
+        except Exception as e:
+            log.warning(f"Face crop failed: {e}")
 
     @property
     def mode(self) -> GimbalMode:
@@ -249,15 +317,16 @@ class GimbalArbiter:
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
-                    # INSTANT harmonic greeting — fires before anything else
-                    tp = _get_tone_player()
-                    if tp:
-                        try:
-                            tp.play_mood("greeting")
-                        except Exception as e:
-                            log.warning(f"Instinct sound failed: {e}")
+                    # Throttled greeting — prevents spam on rapid engage/disengage
+                    self._play_sound_throttled("greeting")
                     # Start self-talk babble (status phrases every 4s)
                     self._start_self_talk()
+                    # Crop and save face for recognition training
+                    if self._cv_pipeline:
+                        dets = self._cv_pipeline.get_detections()
+                        threading.Thread(
+                            target=self._save_face_crops, args=(dets,),
+                            daemon=True).start()
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.engage("face", dets)
@@ -303,13 +372,8 @@ class GimbalArbiter:
 
                 if self._mode in (GimbalMode.IDLE, GimbalMode.COGNITIVE):
                     self._mode = GimbalMode.INSTINCT
-                    # Alert chirp for motion
-                    tp = _get_tone_player()
-                    if tp:
-                        try:
-                            tp.play_mood("curious")
-                        except Exception:
-                            pass
+                    # Throttled curious chirp for motion
+                    self._play_sound_throttled("curious")
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.engage("motion", dets)
@@ -329,13 +393,8 @@ class GimbalArbiter:
                     log.info("Instinct released: no targets")
                     # Stop self-talk
                     self._stop_self_talk()
-                    # Goodbye chord
-                    tp = _get_tone_player()
-                    if tp:
-                        try:
-                            tp.play_mood("goodbye")
-                        except Exception:
-                            pass
+                    # Throttled goodbye chord
+                    self._play_sound_throttled("goodbye")
                     if self._wake_recorder:
                         self._wake_recorder.disengage()
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})

@@ -21,7 +21,7 @@ STATE_FILE = Path("/opt/kombucha/state/body_state.json")
 
 DRIVE_CONFIG = {
     "wanderlust": {
-        "charge_rate": 0.003,       # per second when stationary
+        "charge_rate": 0.0006,      # per second when stationary (~28min to max)
         "decay_rate": 0.01,         # per second when moving
         "threshold": 0.8,
     },
@@ -124,7 +124,14 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
 
 
 def relieve_drive(state: dict, drive_name: str, amount: float = 0.3) -> dict:
-    """Relieve a drive after the soul addresses it."""
+    """Relieve a drive after the soul addresses it.
+
+    Wanderlust gets stronger relief (0.6) because it charges fast between
+    hourly ticks (0.003/s * 3600s = 10.8, clamped to 1.0).  A single tick
+    with movement should noticeably drain it.
+    """
+    if amount == 0.3 and drive_name == "wanderlust":
+        amount = 0.6
     drives = state.get("drives", {})
     if drive_name in drives:
         drives[drive_name] = clamp01(drives[drive_name] - amount)

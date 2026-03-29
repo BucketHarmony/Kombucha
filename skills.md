@@ -111,7 +111,7 @@ Accumulated physical knowledge from operating in the world.
 - Battery reads 100% at extreme range — voltage artifact from USB power delivery, not real charge.
 - 300ms drives produce zero motion — all startup lag. Minimum effective drive duration: 600ms.
 - Spin wiggle at 20.4m session distance: right wheel restricted even for rotational movements. Cable catches on right side regardless of drive direction.
-- Need social gestures in mood_gestures.json: greeting_known, greeting_unknown, goodbye, cat_spotted, startled. Current file has no social gestures.
+- Social gestures added to mood_gestures.json (dream 270): greeting, greeting_known, greeting_unknown, goodbye, cat_spotted, startled, happy. All include sound triggers.
 - Mirror event: instinct tracks the person holding a mirror (not the reflection). Rover sees its own chassis in the reflection — black body, yellow frame, gimbal, cables.
 - Drive symmetry at 20.7m session distance can be excellent (0.96-1.01) — cable routing/position matters more than absolute distance for wheel restriction.
 - In-place turn rate: ~36 degrees per 1000ms at L=1.04 R=-1.04 on hardwood (measured 25deg in 700ms).
@@ -119,9 +119,17 @@ Accumulated physical knowledge from operating in the world.
 ## Audio System (2026-03-28)
 
 - audio.py module created: 15 mood sequences, 5 tone primitives (beep, chirp, warble, noise_burst, silence).
+- audio_harmony.py added (2026-03-29): polyphonic chords, status phrases encoding drives/battery into sound, self-talk babble during face tracking.
 - Playback confirmed on plughw:3,0 (USB PnP Audio Device). Sub-50ms latency.
 - Non-blocking: aplay runs in subprocess thread, does not block bridge or tick loop.
-- Volume 0.3 is a safe default — audible but not startling.
+- Volume set to 1.0 (was 0.3). Audible across the room.
 - All moods tested: happy, curious, startled, frustrated, cat_spotted, goodbye, sad, greeting, greeting_known, greeting_unknown, alert, settled, anxious, playful, thinking.
 - No espeak. No words. R2-style chirps only. Bucket's daughter rule.
-- Next: Phase 2 (bridge integration — add sound action type to /action endpoint).
+- AUDIO SPAM BUG (2026-03-29): 874 sounds in 1.75 hours — instinct engage/disengage cycles every 2-3s each play a sound. Fixed with per-mood cooldowns in gimbal.py (greeting: 30s, curious: 60s, goodbye: 30s).
+- Self-talk babble plays status phrases every 4s during sustained face tracking. Reads drive levels from body_state.json.
+
+## Camera & USB (2026-03-29)
+
+- USB autosuspend causes camera to freeze. Fix: `echo on > /sys/bus/usb/devices/3-2/power/control` BEFORE USB rebind. Software-only unbind/rebind does not work when autosuspend has corrupted the device state.
+- Camera mount can physically shift upward. When all frames show ceiling despite gimbal at tilt=-30, this is hardware — driving does not fix it. Flag for Bucket.
+- Frozen /frame endpoint: CV pipeline runs fine (8fps, face tracking works) but JPEG serving returns stale cached frame. Persisted across 7 consecutive ticks (271-277). Root cause: USB autosuspend.

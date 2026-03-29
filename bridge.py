@@ -907,6 +907,79 @@ def get_chat_history():
 # Log Tail Endpoints
 # -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
+# Audio Feed Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/audio/latest")
+def get_latest_audio():
+    """Return the most recently generated audio file as WAV."""
+    audio_dir = Path("/opt/kombucha/media/audio")
+    if not audio_dir.exists():
+        raise HTTPException(status_code=404, detail="No audio directory")
+    wavs = sorted(audio_dir.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not wavs:
+        raise HTTPException(status_code=404, detail="No audio files")
+    return Response(
+        content=wavs[0].read_bytes(),
+        media_type="audio/wav",
+        headers={"X-Filename": wavs[0].name},
+    )
+
+
+@app.get("/audio/recent")
+def get_recent_audio(n: int = 10):
+    """Return metadata for the N most recent audio files."""
+    audio_dir = Path("/opt/kombucha/media/audio")
+    if not audio_dir.exists():
+        return []
+    wavs = sorted(audio_dir.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)[:n]
+    return [
+        {"file": w.name, "size": w.stat().st_size,
+         "age_s": round(time.time() - w.stat().st_mtime, 1)}
+        for w in wavs
+    ]
+
+
+@app.get("/audio/file/{filename}")
+def get_audio_file(filename: str):
+    """Serve a specific audio WAV file."""
+    audio_dir = Path("/opt/kombucha/media/audio")
+    path = audio_dir / filename
+    if not path.exists() or not path.suffix == '.wav':
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=path.read_bytes(), media_type="audio/wav")
+
+
+# -----------------------------------------------------------------------------
+# Face Crop Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/faces/unknown")
+def list_unknown_faces():
+    """List all unknown face crops for classification."""
+    face_dir = Path("/opt/kombucha/media/faces/unknown")
+    if not face_dir.exists():
+        return []
+    faces = sorted(face_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [{"file": f.name, "size": f.stat().st_size,
+             "time": datetime.fromtimestamp(f.stat().st_mtime).strftime("%H:%M:%S")}
+            for f in faces]
+
+
+@app.get("/faces/unknown/{filename}")
+def get_unknown_face(filename: str):
+    """Serve a face crop image."""
+    path = Path("/opt/kombucha/media/faces/unknown") / filename
+    if not path.exists():
+        raise HTTPException(status_code=404)
+    return Response(content=path.read_bytes(), media_type="image/jpeg")
+
+
+# -----------------------------------------------------------------------------
+# Log Tail Endpoints
+# -----------------------------------------------------------------------------
+
 @app.get("/logs/invocations")
 def get_log_invocations(lines: int = 50):
     """Tail invocations.log."""
