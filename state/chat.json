@@ -1384,5 +1384,149 @@
         "thought": "No. Everything is generated in memory and piped straight to `aplay` \u2014 nothing hits disk. The PCM samples get rendered, shoved into aplay's stdin, and forgotten.\n\nWant me to add a save-to-wav option? Could be useful for archiving what each tick sounded like, or for building a library of tones to iter"
       }
     ]
+  },
+  {
+    "role": "human",
+    "text": "You are an embodied AI experiment with self-modification systems.  Right now we are focusing on two things, being an entertaining thing to interact with, and a content production pipeline.  With that in mind we should save all sounds to disk and associate them with the ticks and save the meta-data about them.",
+    "time": "00:16:36"
+  },
+  {
+    "role": "kombucha",
+    "text": "(static) ...I lost my train of thought.",
+    "time": "00:18:35",
+    "steps": [
+      {
+        "thought": "Let me read the current audio.py to see what I'm working with."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/audio.py"
+      },
+      {
+        "tool": "Bash",
+        "detail": "ls /opt/kombucha/media/"
+      },
+      {
+        "thought": "Now let me check how the bridge calls the sound action, so I know where to hook in the save."
+      },
+      {
+        "tool": "Grep",
+        "detail": "sound.*action|play_mood|play_sequence|TonePlayer"
+      },
+      {
+        "tool": "Bash",
+        "detail": "ls /opt/kombucha/media/raw/ | tail -5"
+      },
+      {
+        "tool": "Grep",
+        "detail": "sound|tone_player|audio"
+      },
+      {
+        "tool": "Grep",
+        "detail": "tone|audio|TonePlayer"
+      },
+      {
+        "tool": "Grep",
+        "detail": "TonePlayer|audio|tone_player"
+      },
+      {
+        "thought": "Hmm, only audio.py itself has TonePlayer. Let me check where it's actually imported \u2014 the chat said line 40 and line 1118 of bridge.py."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Let me see the full sound action handler and find where tone_player is initialized."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Grep",
+        "detail": "tone_player\\s*="
+      },
+      {
+        "tool": "Grep",
+        "detail": "tone_player"
+      },
+      {
+        "tool": "Grep",
+        "detail": "tone_player|TonePlayer"
+      },
+      {
+        "thought": "That's weird \u2014 I can see it in the Read output but grep can't find it. Let me check if the file is somehow different."
+      },
+      {
+        "tool": "Bash",
+        "detail": "grep -n \"tone_player\\|TonePlayer\" /opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Good. Now I have the full picture. Here's the plan:\n\n1. Add a `save_wav` method to `TonePlayer` that writes PCM to a WAV file\n2. Modify `play_sequence` and `play_mood` to save alongside playing\n3. Save WAVs to `media/audio/` with tick-associated naming\n4. Return metadata (file path, duration, sequen"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Now I'll implement this. The changes:\n\n1. **audio.py**: Add WAV saving, tick association, metadata tracking\n2. **bridge.py**: Pass tick context to sound actions, return metadata in response"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/audio.py"
+      },
+      {
+        "thought": "Now replace the TonePlayer class to add saving:"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/audio.py"
+      },
+      {
+        "thought": "Now update the bridge to pass tick context and return metadata:"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/bridge.py"
+      },
+      {
+        "thought": "Now update the CLI test to reflect the new return values:"
+      },
+      {
+        "tool": "Edit",
+        "detail": "/opt/kombucha/audio.py"
+      },
+      {
+        "thought": "Let me test it works:"
+      },
+      {
+        "tool": "Bash",
+        "detail": "python3 audio.py curious 268"
+      },
+      {
+        "tool": "Bash",
+        "detail": "ls -la /opt/kombucha/media/audio/ && cat /opt/kombucha/media/audio/manifest.jsonl"
+      },
+      {
+        "thought": "Working. WAV saved, manifest has full metadata including the sequence, tick number, timestamp, and duration. Now restart the bridge so it picks up the changes:"
+      },
+      {
+        "tool": "Bash",
+        "detail": "sudo systemctl restart kombucha-bridge && sleep 3 && curl -s http://localhost:5050/health"
+      }
+    ]
   }
 ]

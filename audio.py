@@ -22,13 +22,17 @@ import threading
 import time
 import json
 import os
+import wave
 import logging
+from pathlib import Path
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 22050
 FADE_MS = 5  # raised-cosine fade to prevent clicks
 DEVICE = "plughw:3,0"
+AUDIO_DIR = Path("/opt/kombucha/media/audio")
 
 # Mood-to-sequence lookup — the R2 vocabulary
 MOOD_SEQUENCES = {
@@ -237,27 +241,80 @@ def samples_to_pcm(samples):
 
 
 class TonePlayer:
-    """Non-blocking tone player. Queues sequences so they don't overlap."""
+    """Non-blocking tone player. Saves all output to WAV with metadata."""
 
-    def __init__(self, volume=0.3, device=DEVICE):
+    def __init__(self, volume=0.3, device=DEVICE, audio_dir=AUDIO_DIR):
         self.volume = volume
         self.device = device
+        self.audio_dir = Path(audio_dir)
+        self.audio_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._playing = False
+        self._current_tick = None
+        self._tick_sound_index = 0
+        # Session-level manifest: list of all sounds played
+        self._manifest_path = self.audio_dir / "manifest.jsonl"
 
-    def play_sequence(self, sequence):
-        """Render and play a sequence of tone primitives. Non-blocking."""
+    def set_tick(self, tick_number):
+        """Set the current tick number for file naming."""
+        self._current_tick = tick_number
+        self._tick_sound_index = 0
+
+    def play_sequence(self, sequence, label=None):
+        """Render, save, and play a sequence. Non-blocking. Returns metadata."""
         samples = render_sequence(sequence, self.volume)
         pcm = samples_to_pcm(samples)
+        duration_ms = len(samples) * 1000 // SAMPLE_RATE
+        meta = self._save_wav(pcm, sequence, label=label or "custom",
+                              duration_ms=duration_ms)
         self._play_pcm(pcm)
+        return meta
 
     def play_mood(self, mood):
-        """Play the pre-composed sequence for a mood word. Non-blocking."""
+        """Play the pre-composed sequence for a mood word. Returns metadata."""
         seq = MOOD_SEQUENCES.get(mood)
         if seq is None:
             logger.warning(f"No tone sequence for mood '{mood}', using 'settled'")
             seq = MOOD_SEQUENCES.get("settled", [])
-        self.play_sequence(seq)
+            mood = "settled"
+        return self.play_sequence(seq, label=mood)
+
+    def _save_wav(self, pcm_data, sequence, label, duration_ms):
+        """Save PCM to WAV and append metadata to manifest. Returns metadata dict."""
+        self._tick_sound_index += 1
+        tick_str = f"tick_{self._current_tick:04d}" if self._current_tick is not None else "notick"
+        filename = f"{tick_str}_sound_{self._tick_sound_index:02d}_{label}.wav"
+        wav_path = self.audio_dir / filename
+
+        try:
+            with wave.open(str(wav_path), 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # 16-bit
+                wf.setframerate(SAMPLE_RATE)
+                wf.writeframes(pcm_data)
+        except Exception as e:
+            logger.error(f"Failed to save WAV {wav_path}: {e}")
+            return {"error": str(e)}
+
+        meta = {
+            "file": str(wav_path),
+            "filename": filename,
+            "tick": self._current_tick,
+            "label": label,
+            "sequence": sequence,
+            "duration_ms": duration_ms,
+            "sample_rate": SAMPLE_RATE,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+        try:
+            with open(self._manifest_path, 'a') as f:
+                f.write(json.dumps(meta) + '\n')
+        except Exception as e:
+            logger.error(f"Failed to write manifest: {e}")
+
+        logger.info(f"Saved tone: {filename} ({duration_ms}ms)")
+        return meta
 
     def _play_pcm(self, pcm_data):
         """Pipe PCM to aplay in a background thread."""
@@ -301,7 +358,11 @@ if __name__ == "__main__":
     import sys
     player = TonePlayer(volume=0.3)
     mood = sys.argv[1] if len(sys.argv) > 1 else "greeting"
+    tick = int(sys.argv[2]) if len(sys.argv) > 2 else None
+    if tick is not None:
+        player.set_tick(tick)
     print(f"Playing '{mood}'...")
-    player.play_mood(mood)
+    meta = player.play_mood(mood)
+    print(f"Saved: {meta.get('filename', 'n/a')}")
     time.sleep(2)  # wait for playback
     print("Done.")

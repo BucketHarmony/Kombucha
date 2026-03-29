@@ -529,14 +529,18 @@ def post_action(action: Union[ActionModel, list[ActionModel]]):
             # Suppress mic while playing tones (self-sound suppression)
             if audio_listener:
                 audio_listener.suppress(2.0)
+            # Set tick context for file naming
+            tick = act_dict.get("tick")
+            if tick is not None:
+                tone_player.set_tick(int(tick))
             mood = act_dict.get("mood")
             seq = act_dict.get("sequence")
             if seq:
-                tone_player.play_sequence(seq)
-                return {"result": "ok", "played": "custom_sequence"}
+                meta = tone_player.play_sequence(seq, label=act_dict.get("label", "custom"))
+                return {"result": "ok", "played": "custom_sequence", "audio": meta}
             elif mood:
-                tone_player.play_mood(mood)
-                return {"result": "ok", "played": mood}
+                meta = tone_player.play_mood(mood)
+                return {"result": "ok", "played": mood, "audio": meta}
             else:
                 raise HTTPException(status_code=400, detail={"error": "sound action requires 'mood' or 'sequence'"})
 
