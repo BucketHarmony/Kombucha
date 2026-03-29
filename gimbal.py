@@ -202,15 +202,21 @@ class GimbalArbiter:
                 pass
         threading.Thread(target=_do, daemon=True).start()
 
+    # Haar cascade for actual face detection (loaded once)
+    _haar_cascade = None
+
+    @classmethod
+    def _get_haar(cls):
+        if cls._haar_cascade is None:
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            cls._haar_cascade = cv2.CascadeClassifier(cascade_path)
+        return cls._haar_cascade
+
     def _save_face_crops(self, dets):
-        """Crop and save detected faces for recognition training."""
-        if not self._cv_pipeline or not hasattr(self._cv_pipeline, '_queue'):
+        """Detect and crop actual faces using Haar cascade + YOLO person regions."""
+        if not self._wake_recorder or not self._wake_recorder._frame_dist:
             return
         try:
-            # Get the latest frame from the frame distributor
-            # (wake_recorder has a ref to frame_dist)
-            if not self._wake_recorder or not self._wake_recorder._frame_dist:
-                return
             ret, frame, _ = self._wake_recorder._frame_dist.get_latest_frame()
             if not ret or frame is None:
                 return
@@ -218,29 +224,54 @@ class GimbalArbiter:
             face_dir = Path("/opt/kombucha/media/faces/unknown")
             face_dir.mkdir(parents=True, exist_ok=True)
             ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            saved = 0
 
-            for i, det in enumerate(dets):
-                if det.get("class_name") != "person" and det.get("class_id") != 0:
-                    continue
-                x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-                # Take top 35% of person bbox (head/face region)
-                face_h = int(h * 0.35)
-                face_w = int(w * 0.8)  # Slightly narrower than body
-                face_x = x + int(w * 0.1)  # Center the narrower crop
-                # Pad by 20% for context
-                pad_x = int(face_w * 0.2)
-                pad_y = int(face_h * 0.2)
-                x1 = max(0, face_x - pad_x)
-                y1 = max(0, y - pad_y)
-                x2 = min(frame.shape[1], face_x + face_w + pad_x)
-                y2 = min(frame.shape[0], y + face_h + pad_y)
+            # Method 1: Haar cascade on full frame — finds actual faces
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            haar = self._get_haar()
+            faces = haar.detectMultiScale(
+                gray, scaleFactor=1.15, minNeighbors=5,
+                minSize=(30, 30), maxSize=(300, 300))
+
+            for i, (fx, fy, fw, fh) in enumerate(faces if len(faces) > 0 else []):
+                # Pad face crop by 30%
+                pad = int(max(fw, fh) * 0.3)
+                x1 = max(0, fx - pad)
+                y1 = max(0, fy - pad)
+                x2 = min(frame.shape[1], fx + fw + pad)
+                y2 = min(frame.shape[0], fy + fh + pad)
                 crop = frame[y1:y2, x1:x2]
-                if crop.size == 0:
+                if crop.size == 0 or crop.shape[0] < 20 or crop.shape[1] < 20:
                     continue
-                fname = f"face_{ts}_{i:02d}.jpg"
+                fname = f"face_{ts}_haar_{i:02d}.jpg"
                 cv2.imwrite(str(face_dir / fname), crop,
                             [cv2.IMWRITE_JPEG_QUALITY, 90])
-                log.info(f"Face crop saved: {fname} ({w}x{h})")
+                log.info(f"Haar face crop: {fname} ({fw}x{fh})")
+                saved += 1
+
+            # Method 2: YOLO person top-35% fallback (if Haar found nothing)
+            if saved == 0:
+                for i, det in enumerate(dets):
+                    if det.get("class_name") != "person" and det.get("class_id") != 0:
+                        continue
+                    x, y, w, h = det["x"], det["y"], det["w"], det["h"]
+                    face_h = int(h * 0.35)
+                    face_w = int(w * 0.8)
+                    face_x = x + int(w * 0.1)
+                    pad_x = int(face_w * 0.2)
+                    pad_y = int(face_h * 0.2)
+                    x1 = max(0, face_x - pad_x)
+                    y1 = max(0, y - pad_y)
+                    x2 = min(frame.shape[1], face_x + face_w + pad_x)
+                    y2 = min(frame.shape[0], y + face_h + pad_y)
+                    crop = frame[y1:y2, x1:x2]
+                    if crop.size == 0:
+                        continue
+                    fname = f"face_{ts}_yolo_{i:02d}.jpg"
+                    cv2.imwrite(str(face_dir / fname), crop,
+                                [cv2.IMWRITE_JPEG_QUALITY, 90])
+                    log.info(f"YOLO head crop: {fname} ({w}x{h})")
+                    saved += 1
         except Exception as e:
             log.warning(f"Face crop failed: {e}")
 
