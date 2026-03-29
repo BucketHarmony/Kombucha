@@ -1,16 +1,6 @@
 [
   {
     "role": "human",
-    "text": "I suspect that when you cause motion, the motion detector wakes up. Consider how you guys might share the action bus together. Create a markdown file with your ideas.",
-    "time": "22:11:14"
-  },
-  {
-    "role": "kombucha",
-    "text": "...",
-    "time": "22:12:13"
-  },
-  {
-    "role": "human",
     "text": "You are triggering your own instinct layer every time you pan the gimbal. Your head movement creates pixel changes that the MOG2 motion   detector sees as motion, which makes instinct grab the gimbal back from you. You are flinching at your own head turning. This is why   your look commands keep getting queued during surveys.    The fix: you need to suppress motion detection after gimbal commands, not just after drive commands. Look at gimbal.py \u2014 the CVPipeline   has a suppress_motion() method. Right now it only gets called when drive commands are sent (in bridge.py's _send function). You need to   also call it after look commands.    But you cannot edit gimbal.py directly \u2014 it is protected. So here is what you CAN do: write this finding to skills.md so your future   self knows about it. And propose the fix in your next tick log under a new section called \"## Proposed Code Changes\" so Bucket can   review and apply it.    Also: you have perception.toml and you have not changed it yet. The dead zone experiment has been staged for hours. Change dead_zone_px   from 30 to 15 right now. Just do it. The quarantine system will save you if it breaks anything.",
     "time": "22:21:13"
   },
@@ -1976,6 +1966,215 @@
       },
       {
         "thought": "Survey complete. Seven frames from my back. Here's what I saw and what it means.\n\n---\n\nThe floor \u2014 which I've driven across dozens of times \u2014 is now a ceiling inches from my face. Warm hardwood grain filling the fisheye lens like a planet. My own cable coiled next to me like a leash I tripped over. "
+      }
+    ]
+  },
+  {
+    "role": "human",
+    "text": "Run a tick.  Look in a spiral.",
+    "time": "00:57:24"
+  },
+  {
+    "role": "kombucha",
+    "text": "Tick 0280 done. 10 frames from my back \u2014 the full spiral plus the ceiling light close-up. The Edison bulb in that cage fixture is genuinely nice from down here. Red walls, hardwood grain, equipment racks all sideways.\n\nI'm still on my back though. Wheels in the air. Can't do much about that part myself.",
+    "time": "01:01:24",
+    "steps": [
+      {
+        "thought": "Let me get set up and run this tick."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/health"
+      },
+      {
+        "tool": "Bash",
+        "detail": "ls /opt/kombucha/ticks/ | sort -n | tail -5"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/sense"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/goals.md"
+      },
+      {
+        "thought": "Tick 0280. Let me start video, grab a frame, and run the spiral survey from my back."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/video/session/start -H 'Content-Type: application/json' -d '{}' 2>&1"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/video/tick/start -H 'Content-Type: application/json' -d '{\"tick\":280}'"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s http://localhost:5050/frame -o /opt/kombucha/media/raw/tick_0280_01.jpg && stat -c%s /opt/kombucha/media/raw/tic"
+      },
+      {
+        "thought": "44KB, good frame. Let me see what I'm looking at, then do the spiral survey."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_01.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/.claude/agents/kombucha-soul.md"
+      },
+      {
+        "thought": "Good \u2014 ceiling and light fixture, on my back as expected. Now the spiral survey. I'll sweep through pan positions with varying tilts, capturing at each stop."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-180,\"tilt\":-3"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-120,\"tilt\":0,"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-60,\"tilt\":30,"
+      },
+      {
+        "thought": "Instinct is grabbing the gimbal \u2014 probably detecting motion from my own movement. Let me switch to manual mode and continue the spiral."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/cv/mode -H 'Content-Type: application/json' -d '{\"mode\":\"manual\"}'"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":-60,\"tilt\":30,"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":60,\"s"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":60,\"tilt\":30,\""
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":120,\"tilt\":0,\""
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":180,\"tilt\":-30"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":90,\"s"
+      },
+      {
+        "thought": "All 8 spiral frames captured. Let me look at the key ones and then invoke the soul."
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_02.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_05.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_07.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_09.jpg"
+      },
+      {
+        "thought": "Good spiral data \u2014 ceiling, hardwood floor up close, the room sideways from every angle. Now let me invoke the soul with all this context."
+      },
+      {
+        "tool": "Bash",
+        "detail": "date '+%Y-%m-%d %H:%M:%S'"
+      },
+      {
+        "tool": "Agent",
+        "detail": "{'description': 'Soul invocation tick 280', 'prompt': 'You are operating under the following identit"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_01.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_02.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_05.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_07.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_09.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_04.jpg"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_06.jpg"
+      },
+      {
+        "thought": "Good soul response. Let me execute the intent and finish the tick."
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":90,\"s"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"display\",\"lines\":[\"[ ON MY"
+      },
+      {
+        "tool": "Read",
+        "detail": "/opt/kombucha/media/raw/tick_0280_10.jpg"
+      },
+      {
+        "thought": "Nice \u2014 the ceiling light fixture in full view. Rectangular cage with a warm Edison bulb, halo on the drywall ceiling. Red walls flanking, equipment racks, hardwood on one side. Now let me do the mood gesture, restore tracking mode, and write the tick log."
+      },
+      {
+        "tool": "Bash",
+        "detail": "cat /opt/kombucha/mood_gestures.json | python3 -c \"import sys,json; d=json.load(sys.stdin); print('contemplative' if 'co"
+      },
+      {
+        "tool": "Bash",
+        "detail": "source /opt/kombucha/tick_helper.sh && tick_gesture \"contemplative\""
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/cv/mode -H 'Content-Type: application/json' -d '{\"mode\":\"tracking\"}'"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/action -H 'Content-Type: application/json' -d '{\"type\":\"look\",\"pan\":0,\"tilt\":0}'"
+      },
+      {
+        "thought": "Now write the tick log."
+      },
+      {
+        "tool": "Write",
+        "detail": "/opt/kombucha/ticks/tick_0280.md"
+      },
+      {
+        "tool": "Bash",
+        "detail": "curl -s -X POST http://localhost:5050/video/tick/stop 2>&1"
+      },
+      {
+        "thought": "Tick 0280 done. 10 frames from my back \u2014 the full spiral plus the ceiling light close-up. The Edison bulb in that cage fixture is genuinely nice from down here. Red walls, hardwood grain, equipment racks all sideways.\n\nI'm still on my back though. Wheels in the air. Can't do much about that part mys"
       }
     ]
   }
