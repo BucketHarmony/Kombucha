@@ -234,6 +234,7 @@ class WakeRecorder:
         self._recording = False
 
         self._events: deque[dict] = deque(maxlen=self.MAX_EVENTS)
+        self._frame_log: list[dict] = []  # Per-frame detection log for dossier
 
     def engage(self, trigger: str, detections: list[dict]):
         """Called when instinct activates. Snaps a photo, starts video."""
@@ -246,6 +247,7 @@ class WakeRecorder:
             self._wake_id = datetime.now().strftime("%Y%m%d_%H%M%S")
             self._items_seen = set()
             self._frames_written = 0
+            self._frame_log = []
 
             for d in detections:
                 self._items_seen.add(d.get("class_name", "unknown"))
@@ -303,6 +305,9 @@ class WakeRecorder:
             }
             self._events.append(event)
 
+            # Write structured dossier JSON
+            self._write_dossier(event, duration)
+
             log.info(
                 f"Wake ended: {self._wake_id} — {duration:.1f}s, "
                 f"{self._frames_written} frames, items: {sorted(self._items_seen)}"
@@ -327,6 +332,7 @@ class WakeRecorder:
                 continue
             if self._recording:
                 try:
+                    dets = []
                     if self._cv_pipe:
                         dets = self._cv_pipe.get_detections()
                         frame = self._annotate_frame(frame, dets)
@@ -336,10 +342,64 @@ class WakeRecorder:
                     cv2.imwrite(
                         str(self._output_dir / fname), frame,
                         [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
+                    elapsed = now - self._wake_start if self._wake_start else 0
+                    self._frame_log.append({
+                        "frame": fname,
+                        "elapsed_s": round(elapsed, 2),
+                        "timestamp": datetime.fromtimestamp(now).strftime(
+                            "%H:%M:%S"),
+                        "detections": [
+                            {"class": d.get("class_name", "unknown"),
+                             "confidence": round(d.get("confidence", 0), 2),
+                             "bbox": [d["x"], d["y"], d["w"], d["h"]]}
+                            for d in dets
+                        ],
+                    })
                     self._frames_written += 1
                     last_capture = now
                 except Exception as e:
                     log.error(f"Wake capture error: {e}")
+
+    def _write_dossier(self, event: dict, duration: float):
+        """Write a structured wake dossier JSON for the soul to read."""
+        try:
+            # Build per-class summary from frame log
+            class_summary = {}
+            for entry in self._frame_log:
+                for det in entry["detections"]:
+                    cls = det["class"]
+                    if cls not in class_summary:
+                        class_summary[cls] = {
+                            "first_seen_s": entry["elapsed_s"],
+                            "last_seen_s": entry["elapsed_s"],
+                            "peak_confidence": det["confidence"],
+                            "frame_count": 0,
+                        }
+                    cs = class_summary[cls]
+                    cs["last_seen_s"] = entry["elapsed_s"]
+                    cs["frame_count"] += 1
+                    if det["confidence"] > cs["peak_confidence"]:
+                        cs["peak_confidence"] = det["confidence"]
+
+            dossier = {
+                "wake_id": event["wake_id"],
+                "start_time": datetime.fromtimestamp(
+                    event["timestamp"]).strftime("%Y-%m-%d %H:%M:%S")
+                    if event["timestamp"] else None,
+                "duration_s": round(duration, 1),
+                "snapshot": event["snapshot"],
+                "total_frames": self._frames_written,
+                "items_seen": event["items_seen"],
+                "class_summary": class_summary,
+                "frame_log": self._frame_log,
+            }
+
+            dossier_path = self._output_dir / f"dossier_{event['wake_id']}.json"
+            with open(dossier_path, "w") as f:
+                json.dump(dossier, f, indent=2)
+            log.info(f"Wake dossier written: {dossier_path}")
+        except Exception as e:
+            log.error(f"Failed to write wake dossier: {e}")
 
     def _annotate_frame(self, frame, detections: list[dict]):
         """Draw YOLO bounding boxes on a frame."""
@@ -373,6 +433,11 @@ class WakeRecorder:
                 }
                 events.append(current)
             return events
+
+    def get_latest_dossier(self) -> Optional[Path]:
+        """Return path to most recent wake dossier JSON, if any."""
+        dossiers = sorted(self._output_dir.glob("dossier_*.json"))
+        return dossiers[-1] if dossiers else None
 
     @property
     def is_active(self) -> bool:
