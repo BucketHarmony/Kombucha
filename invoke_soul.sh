@@ -198,7 +198,20 @@ PROMPT=$(cat "$PROMPT_FILE")
 rm -f "$PROMPT_FILE"
 
 # -----------------------------------------------------------------------
-# 8. Invoke Claude Code
+# 8. Start tick video (wraps entire invocation)
+# -----------------------------------------------------------------------
+TICK_NUM=$(python3 -c "
+import json
+with open('$STATE_FILE') as f:
+    print(json.load(f).get('last_tick', 0) + 1)
+" 2>/dev/null || echo "0")
+
+# Ensure video session exists, then start tick recording
+curl -sf -X POST "$BRIDGE/video/session/start" -H "Content-Type: application/json" -d '{}' > /dev/null 2>&1
+curl -sf -X POST "$BRIDGE/video/tick/start" -H "Content-Type: application/json" -d "{\"tick\":$TICK_NUM}" > /dev/null 2>&1
+
+# -----------------------------------------------------------------------
+# 9. Invoke Claude Code
 # -----------------------------------------------------------------------
 echo "$(date '+%Y-%m-%d %H:%M:%S') $HOUR START $MODE wake=$WAKE" >> "$LOGFILE"
 
@@ -213,8 +226,11 @@ claude -p "$PROMPT" \
 EXIT_CODE=$?
 echo "$(date '+%Y-%m-%d %H:%M:%S') $HOUR END $MODE exit=$EXIT_CODE" >> "$LOGFILE"
 
+# Stop tick video
+curl -sf -X POST "$BRIDGE/video/tick/stop" > /dev/null 2>&1
+
 # -----------------------------------------------------------------------
-# 9. Auto-commit changes to git
+# 10. Auto-commit changes to git
 # -----------------------------------------------------------------------
 cd "$KOMBUCHA_DIR"
 if git rev-parse --git-dir > /dev/null 2>&1; then

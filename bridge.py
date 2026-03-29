@@ -38,6 +38,7 @@ from perception import FrameDistributor, CVState, CVPipeline
 from gimbal import GimbalArbiter, GimbalMode, Heartbeat
 from recorder import VideoRecorder, WakeRecorder
 from overlay import OverlayRenderer
+from imu_audio import IMUAudioReactor
 from audio import TonePlayer
 from mic import AudioListener
 
@@ -1292,8 +1293,15 @@ def startup():
             heartbeat = Heartbeat(gimbal_arbiter, serial_port, _serial_lock)
             heartbeat.start()
             log.info("Heartbeat started")
+
     else:
         log.warning("No camera — video, CV, and frame endpoints unavailable")
+
+    # IMU audio reactor — sounds from physical movement (works without camera)
+    if telemetry_state:
+        imu_reactor = IMUAudioReactor(telemetry_state)
+        imu_reactor.start()
+        log.info("IMU audio reactor started")
 
     # Audio — R2-style tone player
     try:

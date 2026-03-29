@@ -54,15 +54,24 @@ class VideoRecorder(threading.Thread):
 
     def run(self):
         self._running = True
+        log.info("VideoRecorder thread started")
+        frame_count = 0
         while self._running:
             try:
                 frame, frame_id = self._frame_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
+            frame_count += 1
+            if frame_count == 1:
+                log.info(f"VideoRecorder: first frame received (shape={frame.shape})")
 
             if self._recording:
                 if self._overlay:
-                    frame = self._overlay.render(frame)
+                    try:
+                        frame = self._overlay.render(frame)
+                    except Exception as e:
+                        log.error(f"Overlay render failed: {e}")
+                        frame = frame.copy()  # Use raw frame on overlay failure
                 elif self._cv_pipe:
                     dets = self._cv_pipe.get_detections()
                     if dets:
