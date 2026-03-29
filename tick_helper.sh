@@ -4,8 +4,8 @@
 #   source tick_helper.sh
 #   Then call: tick_start N, tick_gesture MOOD, tick_finish N
 
-BRIDGE="http://192.168.5.87:5050"
-KOMBUCHA_ROOT="E:/AI/Kombucha"
+BRIDGE="http://localhost:5050"
+KOMBUCHA_ROOT="/opt/kombucha"
 MEDIA_DIR="$KOMBUCHA_ROOT/media/raw"
 GESTURE_FILE="$KOMBUCHA_ROOT/mood_gestures.json"
 
@@ -93,6 +93,8 @@ tick_gesture() {
                 console.log('curl -s -X POST '+b+'/action -H \"Content-Type: application/json\" -d \\'{\"type\":\"light\",\"base\":'+s[1]+',\"head\":'+s[2]+'}\\' 2>/dev/null >/dev/null; sleep '+(s[3]/1000));
             else if(s[0]==='drive')
                 console.log('curl -s -X POST '+b+'/action -H \"Content-Type: application/json\" -d \\'{\"type\":\"drive\",\"left\":'+s[1]+',\"right\":'+s[2]+',\"duration_ms\":'+s[3]+'}\\' 2>/dev/null >/dev/null; sleep '+(s[4]/1000));
+            else if(s[0]==='sound')
+                console.log('curl -s -X POST '+b+'/action -H \"Content-Type: application/json\" -d \\'{\"type\":\"sound\",\"mood\":\"'+s[1]+'\"}\\' 2>/dev/null >/dev/null; sleep '+(s[2]/1000));
             else if(s[0]==='wait')
                 console.log('sleep '+(s[1]/1000));
         }
