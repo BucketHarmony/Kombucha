@@ -131,6 +131,9 @@ class GimbalArbiter:
         self._known_objects: set = set()
         self._last_object_sound = 0.0
 
+        # Social gesture cooldown tracking (instance-level)
+        self._last_gesture_times: dict = {}
+
         # Sound dedup — never repeat the same sound back-to-back
         self._last_sound_id = ""
 
@@ -145,6 +148,171 @@ class GimbalArbiter:
         """
         if self._cv_pipeline:
             self._cv_pipeline.suppress_motion(duration_s)
+
+    # -----------------------------------------------------------------
+    # Social gestures — fire on instinct engage BEFORE tracking begins
+    # -----------------------------------------------------------------
+
+    # Cooldowns per gesture type to avoid spam
+    _gesture_cooldowns = {
+        "greeting_known": 30.0,
+        "greeting_unknown": 30.0,
+        "cat_spotted": 60.0,
+        "startled": 10.0,
+    }
+
+    def _social_gesture(self, gesture_type: str):
+        """Execute a quick social gesture in a background thread.
+
+        Runs a short gimbal+light+OLED sequence, then returns to normal
+        tracking. Gesture takes <1s so tracking resumes quickly.
+        """
+        now = time.time()
+        cooldown = self._gesture_cooldowns.get(gesture_type, 30.0)
+        last = self._last_gesture_times.get(gesture_type, 0.0)
+        if now - last < cooldown:
+            return
+        self._last_gesture_times[gesture_type] = now
+
+        def _run():
+            try:
+                if gesture_type == "greeting_known":
+                    self._gesture_greeting_known()
+                elif gesture_type == "greeting_unknown":
+                    self._gesture_greeting_unknown()
+                elif gesture_type == "cat_spotted":
+                    self._gesture_cat_spotted()
+                elif gesture_type == "startled":
+                    self._gesture_startled()
+            except Exception as e:
+                log.warning(f"Social gesture {gesture_type} failed: {e}")
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _gesture_greeting_known(self):
+        """Quick double-nod + bright flash for a recognized person."""
+        log.info("Social gesture: greeting_known")
+        # Quick nod down
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -15, "SPD": 150, "ACC": 30})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.12)
+        # Nod back up
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": 10, "SPD": 150, "ACC": 30})
+        if cmd:
+            self._send(cmd)
+        # Light flash
+        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})
+        if light_cmd:
+            self._send(light_cmd)
+        time.sleep(0.12)
+        # Second nod
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -10, "SPD": 120, "ACC": 25})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.1)
+        # Settle + light off
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": 5, "SPD": 100, "ACC": 20})
+        if cmd:
+            self._send(cmd)
+        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
+        if light_off:
+            self._send(light_off)
+        # OLED greeting
+        for i, line in enumerate(["!! HELLO !!".center(20), "known face".center(20), "", ""]):
+            oled = validate_tcode(3, {"lineNum": i, "Text": line[:20]})
+            if oled:
+                self._send(oled)
+
+    def _gesture_greeting_unknown(self):
+        """Cautious head tilt + soft light for an unrecognized person."""
+        log.info("Social gesture: greeting_unknown")
+        # Slow tilt to the side (curious look)
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 15, "Y": 5, "SPD": 80, "ACC": 15})
+        if cmd:
+            self._send(cmd)
+        # Soft light
+        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 15})
+        if light_cmd:
+            self._send(light_cmd)
+        time.sleep(0.25)
+        # Tilt other way
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan) + 15, "Y": 5, "SPD": 80, "ACC": 15})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.2)
+        # Settle back + light off
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -5, "SPD": 100, "ACC": 20})
+        if cmd:
+            self._send(cmd)
+        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
+        if light_off:
+            self._send(light_off)
+        # OLED
+        for i, line in enumerate(["  ...hello?  ".center(20), "new face".center(20), "", ""]):
+            oled = validate_tcode(3, {"lineNum": i, "Text": line[:20]})
+            if oled:
+                self._send(oled)
+
+    def _gesture_cat_spotted(self):
+        """Low pan sweep + gentle light — watching the cat."""
+        log.info("Social gesture: cat_spotted")
+        # Look down toward cat level
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -25, "SPD": 120, "ACC": 25})
+        if cmd:
+            self._send(cmd)
+        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 15})
+        if light_cmd:
+            self._send(light_cmd)
+        time.sleep(0.2)
+        # Slow pan left watching cat
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 10, "Y": -20, "SPD": 80, "ACC": 15})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.2)
+        # Pan right
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan) + 10, "Y": -20, "SPD": 80, "ACC": 15})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.15)
+        # Light off
+        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
+        if light_off:
+            self._send(light_off)
+        # OLED
+        for i, line in enumerate(["  ~ cat ~  ".center(20), "".center(20), "", ""]):
+            oled = validate_tcode(3, {"lineNum": i, "Text": line[:20]})
+            if oled:
+                self._send(oled)
+
+    def _gesture_startled(self):
+        """Quick jerk back + bright flash — something unexpected."""
+        log.info("Social gesture: startled")
+        # Quick jerk up and back
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -20, "SPD": 200, "ACC": 50})
+        if cmd:
+            self._send(cmd)
+        # Bright flash
+        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})
+        if light_cmd:
+            self._send(light_cmd)
+        time.sleep(0.1)
+        # Quick look left-right (scanning for threat)
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 30, "Y": 0, "SPD": 150, "ACC": 30})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.15)
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan) + 30, "Y": 0, "SPD": 150, "ACC": 30})
+        if cmd:
+            self._send(cmd)
+        time.sleep(0.15)
+        # Settle + light off
+        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": 0, "SPD": 100, "ACC": 20})
+        if cmd:
+            self._send(cmd)
+        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
+        if light_off:
+            self._send(light_off)
 
     def _start_self_talk(self):
         """Start background self-talk babble during sustained face interaction."""
@@ -378,6 +546,9 @@ class GimbalArbiter:
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
                     self._engaged_with_face = True
+                    # Social gesture: greeting (fires before tracking settles)
+                    # TODO: check faces.json to distinguish known vs unknown
+                    self._social_gesture("greeting_unknown")
                     # INSTANT detect trill + name flirtation (skip if repeated)
                     tp = _get_tone_player()
                     if tp and self._last_sound_id != "face_detect":
@@ -530,6 +701,17 @@ class GimbalArbiter:
                     self._smooth_cx = 0.5
                     self._smooth_cy = 0.5
                     self._drain_one()
+
+            # Cat detection — trigger social gesture when cat spotted
+            if self._cv_pipeline:
+                try:
+                    dets = self._cv_pipeline.get_detections()
+                    for det in dets:
+                        if det.get("class_name") == "cat" and det.get("confidence", 0) > 0.3:
+                            self._social_gesture("cat_spotted")
+                            break
+                except Exception:
+                    pass
 
             # Object detection audio — announce new objects by spelling their name
             now_obj = time.time()
