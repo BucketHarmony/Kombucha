@@ -364,14 +364,7 @@ class GimbalArbiter:
                     if self._wake_recorder:
                         dets = self._cv_pipeline.get_detections() if self._cv_pipeline else []
                         self._wake_recorder.update_detections(dets)
-                    # Pulse light while tracking face (1s on, 2s off cycle)
-                    now_t = time.time()
-                    if has_face and now_t - self._last_light_change > 3.0:
-                        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})  # 10% brightness
-                        if light_cmd:
-                            self._send(light_cmd)
-                        self._last_light_change = now_t
-                        self._light_off_at = now_t + 1.0
+                    # No repeated light pulse — single blink on engage only
                     return self._track_target(target)
 
             elif has_motion and not has_face:
