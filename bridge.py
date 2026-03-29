@@ -526,6 +526,9 @@ def post_action(action: Union[ActionModel, list[ActionModel]]):
         if action_type == "sound":
             if tone_player is None:
                 raise HTTPException(status_code=503, detail={"error": "Audio not initialized"})
+            # Suppress mic while playing tones (self-sound suppression)
+            if audio_listener:
+                audio_listener.suppress(2.0)
             mood = act_dict.get("mood")
             seq = act_dict.get("sequence")
             if seq:
@@ -1052,7 +1055,7 @@ def startup():
     global camera, serial_port, video_recorder, telemetry_state
     global telemetry_reader, frame_distributor, cv_state, cv_pipeline
     global gimbal_arbiter, wake_recorder, heartbeat, detection_logger
-    global tone_player
+    global tone_player, audio_listener
 
     log.info("Kombucha Body starting up...")
 
@@ -1144,6 +1147,15 @@ def startup():
         log.warning(f"Tone player failed to initialize: {e}")
         tone_player = None
 
+    # Audio — microphone listener (Phase 3)
+    try:
+        audio_listener = AudioListener(device="plughw:2,0")
+        audio_listener.start()
+        log.info("Audio listener started (mic: plughw:2,0)")
+    except Exception as e:
+        log.warning(f"Audio listener failed to start: {e}")
+        audio_listener = None
+
     # Center gimbal and show startup message
     if serial_port:
         _send({"T": 133, "X": 0, "Y": 0, "SPD": 80, "ACC": 10})
@@ -1160,8 +1172,12 @@ def shutdown():
     """Clean up hardware on shutdown."""
     global camera, serial_port, video_recorder, telemetry_reader
     global frame_distributor, cv_pipeline, heartbeat, detection_logger
+    global audio_listener
 
     log.info("Kombucha Body shutting down...")
+
+    if audio_listener:
+        audio_listener.stop()
 
     if detection_logger:
         detection_logger.stop()
