@@ -51,14 +51,15 @@ class StereoSonar(threading.Thread):
             import re
             cards = {}
             for line in result.stdout.split("\n"):
-                m = re.match(r"card (\d+):.*\[(.+?)\]", line)
+                m = re.match(r"card (\d+): (\S+) \[(.+?)\]", line)
                 if m:
-                    card_num, name = m.group(1), m.group(2)
-                    if "C270" in name or "WEBCAM" in name:
+                    card_num, name = m.group(1), m.group(3)
+                    name_lower = name.lower()
+                    if "c270" in name_lower or "webcam" in name_lower:
                         cards["left"] = f"plughw:{card_num},0"
-                    elif "USB Camera" in name:
+                    elif "usb camera" in name_lower or "camera" in name_lower:
                         cards["right"] = f"plughw:{card_num},0"
-                    elif "USB PnP" in name and "right" not in cards:
+                    elif "pnp" in name_lower and "right" not in cards:
                         cards["right"] = f"plughw:{card_num},0"
 
             self._left_dev = cards.get("left")
