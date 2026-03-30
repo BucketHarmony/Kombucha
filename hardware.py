@@ -245,8 +245,28 @@ class TelemetryReader(threading.Thread):
 # Hardware Initialization
 # -----------------------------------------------------------------------------
 
+def _disable_usb_autosuspend():
+    """Disable USB autosuspend for all USB devices to prevent camera freezes."""
+    usb_devices_path = Path("/sys/bus/usb/devices")
+    if not usb_devices_path.exists():
+        return
+    for device_dir in usb_devices_path.iterdir():
+        power_control = device_dir / "power" / "control"
+        if power_control.exists():
+            try:
+                current = power_control.read_text().strip()
+                if current == "auto":
+                    power_control.write_text("on")
+                    log.info(f"Disabled USB autosuspend for {device_dir.name}")
+            except PermissionError:
+                log.debug(f"Cannot set power/control for {device_dir.name} (no permission)")
+            except OSError:
+                pass
+
+
 def init_camera() -> Optional[cv2.VideoCapture]:
     """Initialize camera using device path or index."""
+    _disable_usb_autosuspend()
     devices_to_try = [CAMERA_DEVICE, "/dev/video1", "/dev/video0", 0, 1, 2]
 
     for device in devices_to_try:
