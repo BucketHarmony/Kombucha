@@ -382,7 +382,7 @@ class GimbalArbiter:
                     with _w.open(tmp, 'w') as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                         w.writeframes(data)
-                    _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                    _sp.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
                         stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             except Exception:
                 pass
@@ -576,7 +576,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception as e:
                             log.warning(f"Face detect sound failed: {e}")
@@ -655,7 +655,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception:
                             try:
@@ -746,7 +746,7 @@ class GimbalArbiter:
                                         with _w.open(tmp, 'w') as w:
                                             w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                             w.writeframes(data)
-                                        _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                        _sp.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
                                             stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
                                 except Exception:
                                     pass

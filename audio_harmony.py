@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 22050
 FADE_MS = 5
-DEVICE = "plughw:3,0"
+DEVICE = "plughw:4,0"
 AUDIO_DIR = Path("/opt/kombucha/media/audio")
 
 # --- Musical constants ---

@@ -76,7 +76,7 @@ class IMUAudioReactor(threading.Thread):
                 w.setframerate(22050)
                 w.writeframes(data)
             subprocess.Popen(
-                ['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                ['aplay', '-D', 'plughw:4,0', '-q', tmp],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
