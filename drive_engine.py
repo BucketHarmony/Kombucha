@@ -102,6 +102,9 @@ def _seconds_since_last_commit():
 
 def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) -> dict:
     drives = state.get("drives", {name: 0.0 for name in DRIVE_CONFIG})
+    # Cap effective elapsed to prevent instant maxing on hourly heartbeats.
+    # Drives should build gradually — 300s cap means max charge per update is bounded.
+    eff_elapsed = min(elapsed_s, 300)
 
     # Ensure all drives exist, remove dead ones
     for name in DRIVE_CONFIG:
@@ -114,10 +117,10 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
     # --- Wanderlust: charges when stationary, decays when moving ---
     if sense and sense.get("moving", False):
         drives["wanderlust"] = clamp01(
-            drives["wanderlust"] - DRIVE_CONFIG["wanderlust"]["decay_rate"] * elapsed_s)
+            drives["wanderlust"] - DRIVE_CONFIG["wanderlust"]["decay_rate"] * eff_elapsed)
     else:
         drives["wanderlust"] = clamp01(
-            drives["wanderlust"] + DRIVE_CONFIG["wanderlust"]["charge_rate"] * elapsed_s)
+            drives["wanderlust"] + DRIVE_CONFIG["wanderlust"]["charge_rate"] * eff_elapsed)
 
     # --- Social: charges when face visible ---
     if sense and sense.get("faces", 0) > 0:
@@ -125,26 +128,26 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             rate = DRIVE_CONFIG["social"]["charge_rate_tracking"]
         else:
             rate = DRIVE_CONFIG["social"]["charge_rate"]
-        drives["social"] = clamp01(drives["social"] + rate * elapsed_s)
+        drives["social"] = clamp01(drives["social"] + rate * eff_elapsed)
     else:
         drives["social"] = clamp01(
-            drives["social"] - DRIVE_CONFIG["social"]["decay_rate"] * elapsed_s)
+            drives["social"] - DRIVE_CONFIG["social"]["decay_rate"] * eff_elapsed)
 
     # --- Curiosity: charges on novel detections ---
     drives["curiosity"] = clamp01(
-        drives["curiosity"] - DRIVE_CONFIG["curiosity"]["decay_rate"] * elapsed_s)
+        drives["curiosity"] - DRIVE_CONFIG["curiosity"]["decay_rate"] * eff_elapsed)
     if sense:
         presence = sense.get("presence", {})
         novel_count = len([k for k, v in presence.items() if v < 20.0])
         drives["curiosity"] = clamp01(
             drives["curiosity"] + novel_count * DRIVE_CONFIG["curiosity"]["charge_per_event"])
 
-    # --- Builder: charges over time since last code commit ---
+    # --- Builder: proportional to time since last code commit ---
+    # Not accumulated — directly calculated from git history.
+    # Rises after 1h, hits threshold (0.6) at ~4h, maxes at ~8h.
     secs_since_commit = _seconds_since_last_commit()
-    # Charges faster the longer since last commit (hourly rate)
-    hours_stale = min(secs_since_commit / 3600, 24)
-    drives["builder"] = clamp01(
-        drives["builder"] + DRIVE_CONFIG["builder"]["charge_rate"] * elapsed_s * (1 + hours_stale * 0.1))
+    hours_stale = secs_since_commit / 3600
+    drives["builder"] = clamp01(hours_stale / 8.0)
 
     # --- Expression: charges when there are unmatched moods ---
     # Check if mood_gestures.json is missing entries for recent moods
@@ -157,10 +160,10 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
                 drives["expression"] + 0.1)
         else:
             drives["expression"] = clamp01(
-                drives["expression"] - 0.003 * elapsed_s)
+                drives["expression"] - 0.003 * eff_elapsed)
     except Exception:
         drives["expression"] = clamp01(
-            drives["expression"] + DRIVE_CONFIG["expression"]["charge_rate"] * elapsed_s)
+            drives["expression"] + DRIVE_CONFIG["expression"]["charge_rate"] * eff_elapsed)
 
     # --- Frustration: charges on failures ---
     if sense:
@@ -173,7 +176,7 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.05)
     drives["frustration"] = clamp01(
-        drives["frustration"] - DRIVE_CONFIG["frustration"]["decay_rate"] * elapsed_s)
+        drives["frustration"] - DRIVE_CONFIG["frustration"]["decay_rate"] * eff_elapsed)
 
     state["drives"] = drives
     return state
