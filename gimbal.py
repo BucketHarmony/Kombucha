@@ -27,8 +27,6 @@ from hardware import (
     CV_HYSTERESIS_S, CV_MANUAL_TIMEOUT_S,
     HEARTBEAT_INTERVAL_S, JPEG_QUALITY,
 )
-from audio_device import find_playback_device
-AUDIO_DEVICE = find_playback_device()
 
 # Audio — import lazily to avoid circular deps / missing module
 _tone_player = None
@@ -98,10 +96,6 @@ class GimbalArbiter:
         self._cv_pipeline = cv_pipeline
         self._lock = threading.Lock()
 
-        # Self-flinch fix: suppress motion detection after gimbal moves
-        # to prevent MOG2 from interpreting view change as motion
-        self._suppress_after_move = True
-
         self._mode = GimbalMode.IDLE
         self._queue: deque[QueuedLook] = deque(maxlen=CV_QUEUE_MAX_DEPTH)
         self._last_target_time = 0.0
@@ -133,192 +127,22 @@ class GimbalArbiter:
         self._known_objects: set = set()
         self._last_object_sound = 0.0
 
-        # Social gesture cooldown tracking (instance-level)
-        self._last_gesture_times: dict = {}
-
         # Sound dedup — never repeat the same sound back-to-back
         self._last_sound_id = ""
 
+        # Automatic reactions (no LLM needed)
+        self._last_scan_time = 0.0
+        self._scan_interval = 45.0  # Idle scan every 45 seconds
+        self._scan_step = 0
+        self._last_investigate_time = 0.0
+        self._investigate_cooldown = 5.0
+        self._last_proximity_sound = 0.0
+        self._last_known_objects = set()  # Track what was seen last frame
+        self._person_enter_time = 0.0  # When person first appeared
+        self._last_departure_check = 0.0
+
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
-
-    def _suppress_motion(self, duration_s: float = 1.0):
-        """Suppress motion detection after gimbal movement to prevent self-flinch.
-
-        The gimbal moving changes the camera view, which MOG2 interprets as
-        motion, which triggers instinct, which steals the gimbal back.
-        """
-        if self._cv_pipeline:
-            self._cv_pipeline.suppress_motion(duration_s)
-
-    # -----------------------------------------------------------------
-    # Social gestures — fire on instinct engage BEFORE tracking begins
-    # -----------------------------------------------------------------
-
-    # Cooldowns per gesture type to avoid spam
-    _gesture_cooldowns = {
-        "greeting_known": 30.0,
-        "greeting_unknown": 30.0,
-        "cat_spotted": 60.0,
-        "startled": 10.0,
-    }
-
-    def _social_gesture(self, gesture_type: str):
-        """Execute a quick social gesture in a background thread.
-
-        Runs a short gimbal+light+OLED sequence, then returns to normal
-        tracking. Gesture takes <1s so tracking resumes quickly.
-        """
-        now = time.time()
-        cooldown = self._gesture_cooldowns.get(gesture_type, 30.0)
-        last = self._last_gesture_times.get(gesture_type, 0.0)
-        if now - last < cooldown:
-            return
-        self._last_gesture_times[gesture_type] = now
-
-        def _run():
-            try:
-                if gesture_type == "greeting_known":
-                    self._gesture_greeting_known()
-                elif gesture_type == "greeting_unknown":
-                    self._gesture_greeting_unknown()
-                elif gesture_type == "cat_spotted":
-                    self._gesture_cat_spotted()
-                elif gesture_type == "startled":
-                    self._gesture_startled()
-            except Exception as e:
-                log.warning(f"Social gesture {gesture_type} failed: {e}")
-
-        threading.Thread(target=_run, daemon=True).start()
-
-    def _gesture_greeting_known(self):
-        """Quick double-nod + bright flash for a recognized person."""
-        log.info("Social gesture: greeting_known")
-        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
-        # Quick nod down
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -15, "SPD": 150, "ACC": 30})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.12)
-        # Nod back up
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": 10, "SPD": 150, "ACC": 30})
-        if cmd:
-            self._send(cmd)
-        # Light flash
-        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})
-        if light_cmd:
-            self._send(light_cmd)
-        time.sleep(0.12)
-        # Second nod
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -10, "SPD": 120, "ACC": 25})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.1)
-        # Settle + light off
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": 5, "SPD": 100, "ACC": 20})
-        if cmd:
-            self._send(cmd)
-        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
-        if light_off:
-            self._send(light_off)
-        # OLED greeting
-        for i, line in enumerate(["!! HELLO !!".center(20), "known face".center(20), "", ""]):
-            oled = validate_tcode(3, {"lineNum": i, "Text": line[:20]})
-            if oled:
-                self._send(oled)
-
-    def _gesture_greeting_unknown(self):
-        """Cautious head tilt + soft light for an unrecognized person."""
-        log.info("Social gesture: greeting_unknown")
-        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
-        # Slow tilt to the side (curious look)
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 15, "Y": 5, "SPD": 80, "ACC": 15})
-        if cmd:
-            self._send(cmd)
-        # Soft light
-        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 15})
-        if light_cmd:
-            self._send(light_cmd)
-        time.sleep(0.25)
-        # Tilt other way
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan) + 15, "Y": 5, "SPD": 80, "ACC": 15})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.2)
-        # Settle back + light off
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -5, "SPD": 100, "ACC": 20})
-        if cmd:
-            self._send(cmd)
-        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
-        if light_off:
-            self._send(light_off)
-        # OLED
-        for i, line in enumerate(["  ...hello?  ".center(20), "new face".center(20), "", ""]):
-            oled = validate_tcode(3, {"lineNum": i, "Text": line[:20]})
-            if oled:
-                self._send(oled)
-
-    def _gesture_cat_spotted(self):
-        """Low pan sweep + gentle light — watching the cat."""
-        log.info("Social gesture: cat_spotted")
-        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
-        # Look down toward cat level
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -25, "SPD": 120, "ACC": 25})
-        if cmd:
-            self._send(cmd)
-        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 15})
-        if light_cmd:
-            self._send(light_cmd)
-        time.sleep(0.2)
-        # Slow pan left watching cat
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 10, "Y": -20, "SPD": 80, "ACC": 15})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.2)
-        # Pan right
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan) + 10, "Y": -20, "SPD": 80, "ACC": 15})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.15)
-        # Light off
-        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
-        if light_off:
-            self._send(light_off)
-        # OLED
-        for i, line in enumerate(["  ~ cat ~  ".center(20), "".center(20), "", ""]):
-            oled = validate_tcode(3, {"lineNum": i, "Text": line[:20]})
-            if oled:
-                self._send(oled)
-
-    def _gesture_startled(self):
-        """Quick jerk back + bright flash — something unexpected."""
-        log.info("Social gesture: startled")
-        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
-        # Quick jerk up and back
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -20, "SPD": 200, "ACC": 50})
-        if cmd:
-            self._send(cmd)
-        # Bright flash
-        light_cmd = validate_tcode(132, {"IO4": 0, "IO5": 25})
-        if light_cmd:
-            self._send(light_cmd)
-        time.sleep(0.1)
-        # Quick look left-right (scanning for threat)
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 30, "Y": 0, "SPD": 150, "ACC": 30})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.15)
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan) + 30, "Y": 0, "SPD": 150, "ACC": 30})
-        if cmd:
-            self._send(cmd)
-        time.sleep(0.15)
-        # Settle + light off
-        cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": 0, "SPD": 100, "ACC": 20})
-        if cmd:
-            self._send(cmd)
-        light_off = validate_tcode(132, {"IO4": 0, "IO5": 0})
-        if light_off:
-            self._send(light_off)
 
     def _start_self_talk(self):
         """Start background self-talk babble during sustained face interaction."""
@@ -384,7 +208,7 @@ class GimbalArbiter:
                     with _w.open(tmp, 'w') as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                         w.writeframes(data)
-                    _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
+                    _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
                         stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             except Exception:
                 pass
@@ -482,7 +306,6 @@ class GimbalArbiter:
                     self._cmd_pan = float(pan)
                     self._cmd_tilt = float(tilt)
                     self._play_servo_sound(old_p, pan, old_t, tilt)
-                    self._suppress_motion()
                 return {"result": "ok", "mode": "manual"}
 
             if self._mode == GimbalMode.INSTINCT:
@@ -504,7 +327,6 @@ class GimbalArbiter:
                 self._cmd_pan = float(pan)
                 self._cmd_tilt = float(tilt)
                 self._play_servo_sound(old_p, pan, old_t, tilt)
-                self._suppress_motion()
             return {"result": "ok", "mode": self._mode.value}
 
     def set_mode(self, mode_str: str) -> dict:
@@ -552,9 +374,6 @@ class GimbalArbiter:
                     self._mode = GimbalMode.INSTINCT
                     log.info("Instinct engaged: face detected")
                     self._engaged_with_face = True
-                    # Social gesture: greeting (fires before tracking settles)
-                    # TODO: check faces.json to distinguish known vs unknown
-                    self._social_gesture("greeting_unknown")
                     # INSTANT detect trill + name flirtation (skip if repeated)
                     tp = _get_tone_player()
                     if tp and self._last_sound_id != "face_detect":
@@ -578,7 +397,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception as e:
                             log.warning(f"Face detect sound failed: {e}")
@@ -657,7 +476,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception:
                             try:
@@ -701,23 +520,11 @@ class GimbalArbiter:
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})
                     if center_cmd:
                         self._send(center_cmd)
-                        self._suppress_motion(2.0)  # Longer suppress for return-to-center
                     self._cmd_pan = 0.0
                     self._cmd_tilt = 0.0
                     self._smooth_cx = 0.5
                     self._smooth_cy = 0.5
                     self._drain_one()
-
-            # Cat detection — trigger social gesture when cat spotted
-            if self._cv_pipeline:
-                try:
-                    dets = self._cv_pipeline.get_detections()
-                    for det in dets:
-                        if det.get("class_name") == "cat" and det.get("confidence", 0) > 0.3:
-                            self._social_gesture("cat_spotted")
-                            break
-                except Exception:
-                    pass
 
             # Object detection audio — announce new objects by spelling their name
             now_obj = time.time()
@@ -748,7 +555,7 @@ class GimbalArbiter:
                                         with _w.open(tmp, 'w') as w:
                                             w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                             w.writeframes(data)
-                                        _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
+                                        _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
                                             stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
                                 except Exception:
                                     pass
@@ -759,6 +566,99 @@ class GimbalArbiter:
                 # Reset known objects every 5 minutes so re-appearances get announced
                 if len(self._known_objects) > 20:
                     self._known_objects.clear()
+
+            # ===========================================================
+            # AUTOMATIC REACTIONS — fire at CV speed, no LLM needed
+            # ===========================================================
+            now_react = time.time()
+            dets_react = self._cv_pipeline.get_detections() if self._cv_pipeline else []
+            current_objects = set(d.get("class_name", "") for d in dets_react)
+
+            # 1. AUTO-INVESTIGATE: snap toward new objects briefly
+            if (self._mode == GimbalMode.IDLE
+                    and now_react - self._last_investigate_time > self._investigate_cooldown):
+                new_objects = current_objects - self._last_known_objects - {"person", ""}
+                if new_objects:
+                    obj_name = list(new_objects)[0]
+                    # Find the detection and look at it
+                    for d in dets_react:
+                        if d.get("class_name") == obj_name:
+                            cx = d.get("cx", 0.5)
+                            # Convert frame position to pan angle estimate
+                            pan_est = int((cx - 0.5) * 120)  # rough: center=0, edges=±60
+                            cmd = validate_tcode(133, {
+                                "X": pan_est, "Y": 0, "SPD": 120, "ACC": 25})
+                            if cmd:
+                                self._send(cmd)
+                                self._cmd_pan = float(pan_est)
+                            self._last_investigate_time = now_react
+                            log.info(f"Auto-investigate: {obj_name} at pan={pan_est}")
+                            break
+
+            # 2. IDLE SCAN: periodic environmental sweep when nothing happening
+            if (self._mode == GimbalMode.IDLE
+                    and not cv_snap.get("motion_detected", False)
+                    and now_react - self._last_scan_time > self._scan_interval):
+                scan_positions = [-60, -30, 0, 30, 60, 0]
+                pan = scan_positions[self._scan_step % len(scan_positions)]
+                tilt = -10 if self._scan_step % 2 == 0 else 10
+                cmd = validate_tcode(133, {"X": pan, "Y": tilt, "SPD": 40, "ACC": 8})
+                if cmd:
+                    self._send(cmd)
+                    self._cmd_pan = float(pan)
+                    self._cmd_tilt = float(tilt)
+                self._scan_step += 1
+                self._last_scan_time = now_react
+                # Play a soft searching sound
+                self._play_servo_sound(self._cmd_pan, pan, self._cmd_tilt, tilt)
+
+            # 3. PROXIMITY REACTION: closer face = more expressive
+            if has_face and target and self._mode == GimbalMode.INSTINCT:
+                face_area = (target.get("w", 0) * target.get("h", 0)) / (CAPTURE_W * CAPTURE_H)
+                # Very close (>15% of frame) — excited chirp
+                if face_area > 0.15 and now_react - self._last_proximity_sound > 8.0:
+                    self._last_proximity_sound = now_react
+                    tp = _get_tone_player()
+                    if tp and self._last_sound_id != "proximity":
+                        self._last_sound_id = "proximity"
+                        try:
+                            tp.play_mood("happy")
+                        except Exception:
+                            pass
+
+            # 4. PERSON ARRIVAL/DEPARTURE tracking
+            if has_face and self._person_enter_time == 0:
+                self._person_enter_time = now_react
+            elif not has_face and self._person_enter_time > 0:
+                duration = now_react - self._person_enter_time
+                if duration > 2.0 and now_react - self._last_departure_check > 10.0:
+                    self._last_departure_check = now_react
+                    # Person left — sweep in last known direction to look for them
+                    last_pan = self._cmd_pan
+                    search_pan = int(_clamp(last_pan + (30 if last_pan > 0 else -30), -120, 120))
+                    cmd = validate_tcode(133, {
+                        "X": search_pan, "Y": 0, "SPD": 80, "ACC": 15})
+                    if cmd:
+                        self._send(cmd)
+                        self._cmd_pan = float(search_pan)
+                    log.info(f"Departure sweep: person was here {duration:.0f}s, checking pan={search_pan}")
+                self._person_enter_time = 0.0
+
+            # 5. CAT REACTION: faster tracking + excited sounds
+            if "cat" in current_objects and self._last_sound_id != "cat":
+                self._last_sound_id = "cat"
+                tp = _get_tone_player()
+                if tp:
+                    try:
+                        tp.play_mood("cat_spotted")
+                    except Exception:
+                        pass
+                # OLED update
+                cmd = validate_tcode(3, {"lineNum": 0, "Text": "~~ CAT ~~"})
+                if cmd:
+                    self._send(cmd)
+
+            self._last_known_objects = current_objects
 
             return None
 
@@ -804,8 +704,6 @@ class GimbalArbiter:
             self._cmd_tilt = float(new_tilt)
             self._last_track_cmd_time = time.time()
             self._play_servo_sound(old_pan, new_pan, old_tilt, new_tilt)
-            if self._cv_pipeline:
-                self._cv_pipeline.suppress_motion(1.0)
             log.info(
                 f"Tracking → pan={new_pan} tilt={new_tilt} "
                 f"(face@{raw_cx:.2f},{raw_cy:.2f} err={error_x:.2f},{error_y:.2f})"
@@ -824,7 +722,6 @@ class GimbalArbiter:
                 })
                 if cmd:
                     self._send(cmd)
-                    self._suppress_motion()
                 self._mode = GimbalMode.COGNITIVE
                 return
 
@@ -902,13 +799,11 @@ class Heartbeat(threading.Thread):
         ]),
     ]
 
-    def __init__(self, gimbal_arbiter: GimbalArbiter, ser, serial_lock,
-                 cv_pipeline=None):
+    def __init__(self, gimbal_arbiter: GimbalArbiter, ser, serial_lock):
         super().__init__(daemon=True)
         self._gimbal_arbiter = gimbal_arbiter
         self._ser = ser
         self._serial_lock = serial_lock
-        self._cv_pipeline = cv_pipeline
         self._running = False
         self._frustration = 0
         self._last_gesture = 0.0
@@ -949,11 +844,6 @@ class Heartbeat(threading.Thread):
 
             name, sequence = random.choice(gestures)
             log.info(f"Heartbeat: {name} (frustration={frust})")
-
-            # Suppress motion for the full gesture to prevent self-flinch
-            if self._cv_pipeline:
-                total_dur = sum(d for _, _, _, _, d in sequence) + 1.0
-                self._cv_pipeline.suppress_motion(total_dur)
 
             for pan, tilt, spd, light, delay in sequence:
                 if not self._running:
