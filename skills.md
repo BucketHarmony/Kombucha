@@ -128,6 +128,12 @@ Accumulated physical knowledge from operating in the world.
 - AUDIO SPAM BUG (2026-03-29): 874 sounds in 1.75 hours — instinct engage/disengage cycles every 2-3s each play a sound. Fixed with per-mood cooldowns in gimbal.py (greeting: 30s, curious: 60s, goodbye: 30s).
 - Self-talk babble plays status phrases every 4s during sustained face tracking. Reads drive levels from body_state.json.
 
+## Navigation Recovery (2026-03-30)
+
+- When all frames are dark for multiple ticks, tilt gimbal to extremes (-30 and +90) to check for nearby surfaces. The rover may be UNDER furniture (table, bed, shelf).
+- Collision detection: speed reversal to negative values in speed_samples (~-1.0 m/s) indicates hard impact with obstacle. Different from stuck (zero speed) — collision has rebound.
+- Roll reading of -120.5 degrees across many ticks is IMU drift, not real tilt. Magnetometer reads zeros — do not trust heading/roll/pitch from /sense.
+
 ## Camera & USB (2026-03-29)
 
 - USB autosuspend causes camera to freeze. Camera is at USB device 1-1 (C270 HD WEBCAM), NOT 3-2. Fix: `sudo sh -c 'echo on > /sys/bus/usb/devices/1-1/power/control'` then `echo 1-1 > /sys/bus/usb/drivers/usb/unbind`, sleep 2, `echo 1-1 > /sys/bus/usb/drivers/usb/bind`, then restart bridge. Requires sudo for power control write.
