@@ -40,6 +40,9 @@ from recorder import VideoRecorder, WakeRecorder
 from overlay import OverlayRenderer
 from audio_device import find_playback_device, find_capture_device
 from imu_audio import IMUAudioReactor
+from audio_monitor import AudioMonitor
+from stereo_sonar import StereoSonar
+from timelapse import TimeLapseRecorder
 from audio import TonePlayer
 from mic import AudioListener
 
@@ -99,6 +102,9 @@ audio_listener: Optional[AudioListener] = None
 
 # Detection logger
 detection_logger = None
+audio_monitor = None
+sonar = None
+timelapse = None
 
 LOG_DIR = Path(os.environ.get("KOMBUCHA_LOG_DIR",
                Path.home() / "kombucha" / "logs"))
@@ -906,6 +912,43 @@ def get_chat_history():
 
 
 # -----------------------------------------------------------------------------
+# Audio Monitor + Sonar + Timelapse Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/audio/monitor")
+def get_audio_monitor():
+    try:
+        return audio_monitor.get_status()
+    except Exception:
+        return {"error": "monitor not running"}
+
+@app.get("/sonar")
+def get_sonar():
+    try:
+        return sonar.get_status()
+    except Exception:
+        return {"error": "sonar not running"}
+
+@app.get("/timelapse/status")
+def get_timelapse_status():
+    try:
+        return timelapse.get_status()
+    except Exception:
+        return {"error": "timelapse not running"}
+
+@app.get("/timelapse/frame")
+def get_timelapse_frame():
+    try:
+        ret, frame = timelapse.get_latest_frame()
+        if ret and frame is not None:
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            return Response(content=buf.tobytes(), media_type="image/jpeg")
+    except Exception:
+        pass
+    raise HTTPException(status_code=503, detail="No timelapse frame")
+
+
+# -----------------------------------------------------------------------------
 # Log Tail Endpoints
 # -----------------------------------------------------------------------------
 
@@ -1038,6 +1081,43 @@ def get_unknown_face(filename: str):
     if not path.exists():
         raise HTTPException(status_code=404)
     return Response(content=path.read_bytes(), media_type="image/jpeg")
+
+
+# -----------------------------------------------------------------------------
+# Audio Monitor + Sonar + Timelapse Endpoints
+# -----------------------------------------------------------------------------
+
+@app.get("/audio/monitor")
+def get_audio_monitor():
+    try:
+        return audio_monitor.get_status()
+    except Exception:
+        return {"error": "monitor not running"}
+
+@app.get("/sonar")
+def get_sonar():
+    try:
+        return sonar.get_status()
+    except Exception:
+        return {"error": "sonar not running"}
+
+@app.get("/timelapse/status")
+def get_timelapse_status():
+    try:
+        return timelapse.get_status()
+    except Exception:
+        return {"error": "timelapse not running"}
+
+@app.get("/timelapse/frame")
+def get_timelapse_frame():
+    try:
+        ret, frame = timelapse.get_latest_frame()
+        if ret and frame is not None:
+            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            return Response(content=buf.tobytes(), media_type="image/jpeg")
+    except Exception:
+        pass
+    raise HTTPException(status_code=503, detail="No timelapse frame")
 
 
 # -----------------------------------------------------------------------------
@@ -1303,6 +1383,36 @@ def startup():
         imu_reactor = IMUAudioReactor(telemetry_state)
         imu_reactor.start()
         log.info("IMU audio reactor started")
+
+    # Audio monitor — spike detection + ambient logging
+    try:
+        from audio_device import find_capture_device
+        global audio_monitor
+        audio_monitor = AudioMonitor()
+        audio_monitor.start()
+        log.info("Audio monitor started")
+    except Exception as e:
+        log.warning(f"Audio monitor failed: {e}")
+
+    # Stereo sonar — directional hearing
+    try:
+        global sonar
+        sonar = StereoSonar()
+        sonar.start()
+        log.info("Stereo sonar started")
+    except Exception as e:
+        log.warning(f"Stereo sonar failed: {e}")
+
+    # Timelapse — secondary camera wide-angle recording
+    try:
+        # Find the C270 (usually /dev/video0 or first non-primary)
+        tl_device = "/dev/video0"
+        global timelapse
+        timelapse = TimeLapseRecorder(device=tl_device, interval_s=30)
+        timelapse.start()
+        log.info(f"Timelapse recorder started on {tl_device}")
+    except Exception as e:
+        log.warning(f"Timelapse failed: {e}")
 
     # Audio — R2-style tone player
     try:

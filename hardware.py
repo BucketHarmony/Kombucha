@@ -267,7 +267,7 @@ def _disable_usb_autosuspend():
 def init_camera() -> Optional[cv2.VideoCapture]:
     """Initialize camera using device path or index."""
     _disable_usb_autosuspend()
-    devices_to_try = [CAMERA_DEVICE, "/dev/video0", "/dev/video1", "/dev/video2", 0, 1, 2, 3, 4, 5]
+    devices_to_try = [CAMERA_DEVICE, "/dev/video2", "/dev/video3", "/dev/video0", "/dev/video1", 0, 1, 2, 3, 4, 5]
 
     for device in devices_to_try:
         if isinstance(device, str):
