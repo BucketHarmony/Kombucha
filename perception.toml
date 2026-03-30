@@ -12,9 +12,9 @@ cooldown_s = 0.4
 hysteresis_s = 2.0
 
 [detection]
-confidence_threshold = 0.5
+confidence_threshold = 0.3
 process_every_n = 3
-motion_min_area = 2000
+motion_min_area = 500
 imgsz = 320
 
 [heartbeat]
