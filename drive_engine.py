@@ -200,14 +200,19 @@ def format_drives(drives: dict) -> str:
         level = drives.get(name, 0)
         config = DRIVE_CONFIG[name]
         threshold = config.get("threshold", 0.7)
+        # Visual bar: 10 segments
+        filled = int(level * 10)
+        bar = "#" * filled + "." * (10 - filled)
         if level >= threshold:
-            tag = "HIGH"
-        elif level >= threshold * 0.5:
-            tag = "medium"
+            tag = "URGENT"
+        elif level >= threshold * 0.7:
+            tag = "rising"
+        elif level >= threshold * 0.3:
+            tag = "simmering"
         else:
-            tag = "low"
-        parts.append(f"{name}={level:.2f} ({tag})")
-    return "Drives: " + ", ".join(parts)
+            tag = "quiet"
+        parts.append(f"  {name:12s} [{bar}] {level:.0%} {tag}")
+    return "Drives:\n" + "\n".join(parts)
 
 
 def main():
