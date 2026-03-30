@@ -191,7 +191,7 @@ def encode_wanderlust(level, duration_ms=400):
     elif level > 0.4:
         return _render_tremolo_chord(root, 'minor', duration_ms, tremolo, volume=0.6)
     else:
-        return _render_chord(root, 'major', duration_ms, volume=0.5)
+        return _render_chord(root, 'major', duration_ms, volume=1.0)
 
 
 def encode_social(level, has_face, duration_ms=350):
@@ -217,7 +217,7 @@ def encode_curiosity(level, duration_ms=300):
         )
     elif level > 0.3:
         return _concat(
-            _render_chord(root, 'sus4', 80, volume=0.5),
+            _render_chord(root, 'sus4', 80, volume=1.0),
             _render_chord(root * 1.25, 'sus4', 80, volume=0.6),
         )
     else:
@@ -233,7 +233,7 @@ def encode_distance(meters, duration_ms=250):
     parts = []
     for i in range(pips):
         freq = root + i * 50
-        parts.append(_render_chord(freq, 'power', pip_ms, volume=0.5))
+        parts.append(_render_chord(freq, 'power', pip_ms, volume=1.0))
         if i < pips - 1:
             parts.append(_silence(gap_ms))
     return _concat(*parts)
@@ -606,7 +606,7 @@ def render_harmonic_mood(mood, volume=1.0):
 class HarmonicPlayer:
     """Plays harmonic tones and status phrases via aplay."""
 
-    def __init__(self, volume=0.5):
+    def __init__(self, volume=1.0):
         self.volume = volume
         self._lock = threading.Lock()
         self._last_play = {}  # mood -> timestamp for cooldowns
