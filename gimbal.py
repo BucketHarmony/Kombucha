@@ -195,8 +195,8 @@ class GimbalArbiter:
     def _stop_self_talk(self):
         self._self_talk_active = False
 
-    def _play_servo_sound(self, pan_from, pan_to, tilt_from, tilt_to):
-        """Play a quick servo movement sound and suppress motion detection."""
+    def _play_servo_sound(self, pan_from, pan_to, tilt_from, tilt_to, purpose="track"):
+        """Play a gimbal movement sound and suppress motion detection."""
         # Suppress motion so gimbal movement doesn't trigger self-flinch
         if self._cv_pipeline and hasattr(self._cv_pipeline, 'suppress_motion'):
             self._cv_pipeline.suppress_motion(1.0)
@@ -204,7 +204,7 @@ class GimbalArbiter:
             try:
                 from audio_harmony import render_servo_sound
                 import struct as _s, tempfile, wave as _w, subprocess as _sp
-                samples = render_servo_sound(pan_from, pan_to, tilt_from, tilt_to)
+                samples = render_servo_sound(pan_from, pan_to, tilt_from, tilt_to, purpose)
                 if samples:
                     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
                         tmp = f.name
@@ -311,7 +311,7 @@ class GimbalArbiter:
                     self._send(cmd)
                     self._cmd_pan = float(pan)
                     self._cmd_tilt = float(tilt)
-                    self._play_servo_sound(old_p, pan, old_t, tilt)
+                    self._play_servo_sound(old_p, pan, old_t, tilt, "snap")
                 return {"result": "ok", "mode": "manual"}
 
             if self._mode == GimbalMode.INSTINCT:
@@ -332,7 +332,7 @@ class GimbalArbiter:
                 self._send(cmd)
                 self._cmd_pan = float(pan)
                 self._cmd_tilt = float(tilt)
-                self._play_servo_sound(old_p, pan, old_t, tilt)
+                self._play_servo_sound(old_p, pan, old_t, tilt, "scan")
             return {"result": "ok", "mode": self._mode.value}
 
     def set_mode(self, mode_str: str) -> dict:
@@ -526,6 +526,7 @@ class GimbalArbiter:
                     center_cmd = validate_tcode(133, {"X": 0, "Y": 0, "SPD": 80, "ACC": 10})
                     if center_cmd:
                         self._send(center_cmd)
+                        self._play_servo_sound(self._cmd_pan, 0, self._cmd_tilt, 0, "return")
                     self._cmd_pan = 0.0
                     self._cmd_tilt = 0.0
                     self._smooth_cx = 0.5
@@ -597,6 +598,7 @@ class GimbalArbiter:
                             if cmd:
                                 self._send(cmd)
                                 self._cmd_pan = float(pan_est)
+                                self._play_servo_sound(self._cmd_pan, pan_est, 0, 0, "snap")
                             self._last_investigate_time = now_react
                             log.info(f"Auto-investigate: {obj_name} at pan={pan_est}")
                             break
@@ -616,7 +618,7 @@ class GimbalArbiter:
                 self._scan_step += 1
                 self._last_scan_time = now_react
                 # Play a soft searching sound
-                self._play_servo_sound(self._cmd_pan, pan, self._cmd_tilt, tilt)
+                self._play_servo_sound(self._cmd_pan, pan, self._cmd_tilt, tilt, "scan")
 
             # 3. PROXIMITY REACTION: closer face = more expressive
             if has_face and target and self._mode == GimbalMode.INSTINCT:
@@ -647,6 +649,7 @@ class GimbalArbiter:
                     if cmd:
                         self._send(cmd)
                         self._cmd_pan = float(search_pan)
+                        self._play_servo_sound(last_pan, search_pan, 0, 0, "search")
                     log.info(f"Departure sweep: person was here {duration:.0f}s, checking pan={search_pan}")
                 self._person_enter_time = 0.0
 

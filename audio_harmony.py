@@ -33,8 +33,7 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 22050
 FADE_MS = 5
-from audio_device import find_playback_device
-DEVICE = find_playback_device()
+DEVICE = "plughw:3,0"
 AUDIO_DIR = Path("/opt/kombucha/media/audio")
 
 # --- Musical constants ---
@@ -191,7 +190,7 @@ def encode_wanderlust(level, duration_ms=400):
     elif level > 0.4:
         return _render_tremolo_chord(root, 'minor', duration_ms, tremolo, volume=0.6)
     else:
-        return _render_chord(root, 'major', duration_ms, volume=1.0)
+        return _render_chord(root, 'major', duration_ms, volume=0.5)
 
 
 def encode_social(level, has_face, duration_ms=350):
@@ -217,7 +216,7 @@ def encode_curiosity(level, duration_ms=300):
         )
     elif level > 0.3:
         return _concat(
-            _render_chord(root, 'sus4', 80, volume=1.0),
+            _render_chord(root, 'sus4', 80, volume=0.5),
             _render_chord(root * 1.25, 'sus4', 80, volume=0.6),
         )
     else:
@@ -233,7 +232,7 @@ def encode_distance(meters, duration_ms=250):
     parts = []
     for i in range(pips):
         freq = root + i * 50
-        parts.append(_render_chord(freq, 'power', pip_ms, volume=1.0))
+        parts.append(_render_chord(freq, 'power', pip_ms, volume=0.5))
         if i < pips - 1:
             parts.append(_silence(gap_ms))
     return _concat(*parts)
@@ -424,45 +423,94 @@ def render_object_detect(class_name, confidence=0.5):
     return _concat(thump, *staccato)
 
 
-def render_servo_sound(pan_from, pan_to, tilt_from, tilt_to):
-    """Gimbal movement sound — pitch follows pan, chord follows tilt.
+def render_servo_sound(pan_from, pan_to, tilt_from, tilt_to, purpose="track"):
+    """Gimbal movement sound — every head movement has a voice.
 
-    Pan left = low, pan right = high (spatial audio mapping).
-    Tilt up = bright/open, tilt down = dark/closed.
-    Bigger movements = longer sweep, tiny movements = short pip.
+    Encodes direction, speed, and purpose into harmonic content:
+    - Pan direction → pitch (left=low, right=high)
+    - Tilt → chord quality (up=bright/harmonic, down=dark/dissonant)
+    - Speed (delta) → duration and sweep rate
+    - Purpose → character (track=smooth, scan=curious, snap=sharp, return=resolving)
     """
-    # Movement magnitude
-    pan_delta = abs(pan_to - pan_from)
-    tilt_delta = abs(tilt_to - tilt_from)
-    total_move = pan_delta + tilt_delta
-    if total_move < 1:
-        return []  # No audible movement
+    pan_delta = pan_to - pan_from  # signed: negative=moving left, positive=right
+    tilt_delta = tilt_to - tilt_from
+    abs_pan = abs(pan_delta)
+    abs_tilt = abs(tilt_delta)
+    total_move = abs_pan + abs_tilt
+    if total_move < 2:
+        return []  # Too small to voice
 
-    # Duration: 30ms for tiny, 120ms for big sweeps
-    dur = _humanize_ms(int(30 + min(total_move, 30) * 3), 0.15)
+    # --- Frequency mapping ---
+    # Pan position → pitch (left=-180=200Hz, center=0=450Hz, right=+180=700Hz)
+    freq_from = _humanize_freq(200 + (pan_from + 180) / 360 * 500, 10)
+    freq_to = _humanize_freq(200 + (pan_to + 180) / 360 * 500, 10)
 
-    # Pan → frequency (left=-180 → 250Hz, center=0 → 450Hz, right=+180 → 650Hz)
-    freq_from = 250 + (pan_from + 180) / 360 * 400
-    freq_to = 250 + (pan_to + 180) / 360 * 400
-
-    # Tilt → chord quality (down=-30 → minor/dark, level=0 → sus4, up=+90 → major/bright)
+    # --- Chord quality from tilt ---
+    # Looking up = harmonic/bright, level = balanced, down = dark/dissonant
     tilt_avg = (tilt_from + tilt_to) / 2
-    if tilt_avg > 30:
-        chord = random.choice(['major', 'bright', 'warm'])
-    elif tilt_avg > -10:
-        chord = random.choice(['sus4', 'power', 'major'])
+    if tilt_avg > 40:
+        chords = ['bright', 'warm', 'major7']
+    elif tilt_avg > 15:
+        chords = ['major', 'warm', 'sus4']
+    elif tilt_avg > -5:
+        chords = ['sus4', 'power', 'major']
+    elif tilt_avg > -20:
+        chords = ['minor', 'sus4', 'dim']
     else:
-        chord = random.choice(['minor', 'dark', 'dim'])
+        chords = ['dim', 'dark', 'cluster']
+    chord = random.choice(chords)
 
-    # Volume: proportional to movement size, quiet overall
-    vol = min(0.25, 0.08 + total_move * 0.005)
+    # --- Duration from movement speed ---
+    dur = _humanize_ms(int(40 + min(total_move, 60) * 2), 0.15)
 
-    if pan_delta > 3:
-        # Sweep — pan is moving, chirp between frequencies
+    # --- Volume scales with movement size ---
+    vol = min(0.5, 0.1 + total_move * 0.006)
+
+    # --- Purpose shapes the sound character ---
+    if purpose == "track":
+        # Smooth following — legato sweep
+        if abs_pan > 5:
+            return _render_harmonic_chirp(freq_from, freq_to, chord, dur, vol)
+        else:
+            return _render_chord(freq_to, chord, max(30, dur // 2), vol * 0.7)
+
+    elif purpose == "scan":
+        # Curious environmental scan — questioning, open chords
+        scan_chord = random.choice(['sus4', 'open5ths', 'major'])
+        return _concat(
+            _render_chord(freq_from, scan_chord, _humanize_ms(40), vol * 0.6),
+            _silence(_humanize_ms(20, 0.4)),
+            _render_harmonic_chirp(freq_from, freq_to, scan_chord, dur, vol * 0.5),
+        )
+
+    elif purpose == "snap":
+        # Sharp sudden movement — staccato, percussive
+        snap_chord = random.choice(['power', 'aug', 'dim'])
+        return _concat(
+            _render_chord(freq_to, snap_chord, _humanize_ms(35), vol * 0.8),
+            _silence(10),
+            _render_chord(_humanize_freq(freq_to * 1.05, 5), snap_chord, _humanize_ms(25), vol * 0.5),
+        )
+
+    elif purpose == "return":
+        # Coming back to center — resolving, settling
+        return _concat(
+            _render_harmonic_chirp(freq_from, freq_to, chord, dur, vol * 0.6),
+            _render_chord(freq_to, random.choice(['major', 'power']), _humanize_ms(60), vol * 0.4),
+        )
+
+    elif purpose == "search":
+        # Looking for something lost — wide intervals, minor
+        search_chord = random.choice(['minor', 'minor7', 'dark'])
+        return _concat(
+            _render_harmonic_chirp(freq_from, freq_to, search_chord, dur, vol * 0.7),
+            _silence(_humanize_ms(30, 0.3)),
+            _render_chord(_humanize_freq(freq_to * 0.8, 15), search_chord, _humanize_ms(50), vol * 0.4),
+        )
+
+    else:
+        # Default — simple chirp
         return _render_harmonic_chirp(freq_from, freq_to, chord, dur, vol)
-    else:
-        # Pip — mostly tilt, single chord at current pan frequency
-        return _render_chord(freq_to, chord, dur, vol)
 
 
 HARMONIC_MOODS = {
@@ -606,7 +654,7 @@ def render_harmonic_mood(mood, volume=1.0):
 class HarmonicPlayer:
     """Plays harmonic tones and status phrases via aplay."""
 
-    def __init__(self, volume=1.0):
+    def __init__(self, volume=0.5):
         self.volume = volume
         self._lock = threading.Lock()
         self._last_play = {}  # mood -> timestamp for cooldowns
