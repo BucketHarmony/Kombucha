@@ -181,15 +181,15 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
 
 def relieve_drive(state: dict, drive_name: str, amount: float = 0.3) -> dict:
     drives = state.get("drives", {})
-    if drive_name in drives:
-        drives[drive_name] = clamp01(drives[drive_name] - amount)
-    # Builder gets extra relief on code commit
+    # Builder and expression have specific relief amounts; others use default
     if drive_name == "builder":
         drives["builder"] = clamp01(
             drives.get("builder", 0) - DRIVE_CONFIG["builder"]["decay_on_commit"])
-    if drive_name == "expression":
+    elif drive_name == "expression":
         drives["expression"] = clamp01(
             drives.get("expression", 0) - DRIVE_CONFIG["expression"]["decay_on_express"])
+    elif drive_name in drives:
+        drives[drive_name] = clamp01(drives[drive_name] - amount)
     state["drives"] = drives
     return state
 
