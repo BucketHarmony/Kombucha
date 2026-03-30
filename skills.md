@@ -138,4 +138,6 @@ Accumulated physical knowledge from operating in the world.
 
 - USB autosuspend causes camera to freeze. Camera is at USB device 1-1 (C270 HD WEBCAM), NOT 3-2. Fix: `sudo sh -c 'echo on > /sys/bus/usb/devices/1-1/power/control'` then `echo 1-1 > /sys/bus/usb/drivers/usb/unbind`, sleep 2, `echo 1-1 > /sys/bus/usb/drivers/usb/bind`, then restart bridge. Requires sudo for power control write.
 - Camera mount can physically shift upward. When all frames show ceiling despite gimbal at tilt=-30, this is hardware — driving does not fix it. Flag for Bucket.
-- Frozen /frame endpoint: CV pipeline runs fine (8fps, face tracking works) but JPEG serving returns stale cached frame. Persisted across 7 consecutive ticks (271-277). Root cause: USB autosuspend.
+- Frozen /frame endpoint: CV pipeline runs fine (8fps, face tracking works) but JPEG serving returns stale cached frame. Persisted across 7 consecutive ticks (271-277) and again ticks 321-328. Root cause: USB autosuspend.
+- DETECTION: When frame byte counts are identical across captures, check MD5 immediately. Do NOT trust frames without verifying checksums when multiple frames return the same size. Camera freeze invalidates all interpretations built on stale frames — audit how far back the freeze extends.
+- Second freeze (2026-03-30): produced 7+ ticks of false "under furniture" narrative. Frame_id incremented (242636) while /frame served stale 22KB JPEG. Same fix worked: USB unbind/rebind + bridge restart.
