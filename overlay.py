@@ -39,7 +39,8 @@ DET_COLORS = {
 
 DRIVE_COLORS = {
     "wanderlust": (180, 120, 40), "curiosity": (40, 180, 120),
-    "social": (40, 120, 220), "cringe": (60, 60, 180),
+    "social": (40, 120, 220), "builder": (60, 180, 220),
+    "expression": (200, 100, 255), "frustration": (60, 60, 180),
 }
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
@@ -300,7 +301,7 @@ class OverlayRenderer:
                 cv2.rectangle(frame, (bx, y_start + bar_max_h - bh),
                               (bx + bar_w, y_start + bar_max_h), color, -1)
             cv2.putText(frame, name[0].upper(), (bx, y_start + bar_max_h + 10), FONT, 0.28, color, 1)
-            threshold = {"wanderlust": 0.8, "curiosity": 0.7, "social": 0.6, "cringe": 0.7}.get(name, 0.7)
+            threshold = {"wanderlust": 0.8, "curiosity": 0.7, "social": 0.6, "builder": 0.6, "expression": 0.6, "frustration": 0.7}.get(name, 0.7)
             if level >= threshold:
                 cv2.putText(frame, "!", (bx + 1, y_start - 2), FONT, 0.3, C_GOLD, 1)
 
