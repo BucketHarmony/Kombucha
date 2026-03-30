@@ -1,3 +1,5 @@
+from audio_device import find_playback_device
+AUDIO_DEVICE = find_playback_device()
 """
 imu_audio.py — IMU-reactive audio for Kombucha.
 
@@ -76,7 +78,7 @@ class IMUAudioReactor(threading.Thread):
                 w.setframerate(22050)
                 w.writeframes(data)
             subprocess.Popen(
-                ['aplay', '-D', 'plughw:4,0', '-q', tmp],
+                ['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass

@@ -38,6 +38,7 @@ from perception import FrameDistributor, CVState, CVPipeline
 from gimbal import GimbalArbiter, GimbalMode, Heartbeat
 from recorder import VideoRecorder, WakeRecorder
 from overlay import OverlayRenderer
+from audio_device import find_playback_device, find_capture_device
 from imu_audio import IMUAudioReactor
 from audio import TonePlayer
 from mic import AudioListener
@@ -1317,9 +1318,9 @@ def startup():
 
     # Audio — microphone listener (Phase 3)
     try:
-        audio_listener = AudioListener(device="plughw:2,0")
+        audio_listener = AudioListener(device=find_capture_device())
         audio_listener.start()
-        log.info("Audio listener started (mic: plughw:2,0)")
+        log.info("Audio listener started (auto-detect)")
     except Exception as e:
         log.warning(f"Audio listener failed to start: {e}")
         audio_listener = None

@@ -27,6 +27,8 @@ from hardware import (
     CV_HYSTERESIS_S, CV_MANUAL_TIMEOUT_S,
     HEARTBEAT_INTERVAL_S, JPEG_QUALITY,
 )
+from audio_device import find_playback_device
+AUDIO_DEVICE = find_playback_device()
 
 # Audio — import lazily to avoid circular deps / missing module
 _tone_player = None
@@ -382,7 +384,7 @@ class GimbalArbiter:
                     with _w.open(tmp, 'w') as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                         w.writeframes(data)
-                    _sp.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
+                    _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                         stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             except Exception:
                 pass
@@ -576,7 +578,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception as e:
                             log.warning(f"Face detect sound failed: {e}")
@@ -655,7 +657,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception:
                             try:
@@ -746,7 +748,7 @@ class GimbalArbiter:
                                         with _w.open(tmp, 'w') as w:
                                             w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                             w.writeframes(data)
-                                        _sp.Popen(['aplay', '-D', 'plughw:4,0', '-q', tmp],
+                                        _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                                             stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
                                 except Exception:
                                     pass
