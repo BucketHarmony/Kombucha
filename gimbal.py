@@ -192,6 +192,7 @@ class GimbalArbiter:
     def _gesture_greeting_known(self):
         """Quick double-nod + bright flash for a recognized person."""
         log.info("Social gesture: greeting_known")
+        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
         # Quick nod down
         cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -15, "SPD": 150, "ACC": 30})
         if cmd:
@@ -227,6 +228,7 @@ class GimbalArbiter:
     def _gesture_greeting_unknown(self):
         """Cautious head tilt + soft light for an unrecognized person."""
         log.info("Social gesture: greeting_unknown")
+        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
         # Slow tilt to the side (curious look)
         cmd = validate_tcode(133, {"X": int(self._cmd_pan) - 15, "Y": 5, "SPD": 80, "ACC": 15})
         if cmd:
@@ -257,6 +259,7 @@ class GimbalArbiter:
     def _gesture_cat_spotted(self):
         """Low pan sweep + gentle light — watching the cat."""
         log.info("Social gesture: cat_spotted")
+        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
         # Look down toward cat level
         cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -25, "SPD": 120, "ACC": 25})
         if cmd:
@@ -288,6 +291,7 @@ class GimbalArbiter:
     def _gesture_startled(self):
         """Quick jerk back + bright flash — something unexpected."""
         log.info("Social gesture: startled")
+        self._suppress_motion(2.0)  # Prevent self-flinch during gesture
         # Quick jerk up and back
         cmd = validate_tcode(133, {"X": int(self._cmd_pan), "Y": -20, "SPD": 200, "ACC": 50})
         if cmd:
