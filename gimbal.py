@@ -140,6 +140,9 @@ class GimbalArbiter:
         self._last_known_objects = set()  # Track what was seen last frame
         self._person_enter_time = 0.0  # When person first appeared
         self._last_departure_check = 0.0
+        self._last_motion_sound = 0.0
+        self._motion_sound_cooldown = 4.0  # Seconds between motion warbles
+        self._last_motion_regions = 0
 
     def _send(self, cmd: dict) -> bool:
         return send_tcode(self._ser, cmd, self._serial_lock)
@@ -193,7 +196,10 @@ class GimbalArbiter:
         self._self_talk_active = False
 
     def _play_servo_sound(self, pan_from, pan_to, tilt_from, tilt_to):
-        """Play a quick servo movement sound in background."""
+        """Play a quick servo movement sound and suppress motion detection."""
+        # Suppress motion so gimbal movement doesn't trigger self-flinch
+        if self._cv_pipeline and hasattr(self._cv_pipeline, 'suppress_motion'):
+            self._cv_pipeline.suppress_motion(1.0)
         def _do():
             try:
                 from audio_harmony import render_servo_sound
@@ -208,7 +214,7 @@ class GimbalArbiter:
                     with _w.open(tmp, 'w') as w:
                         w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                         w.writeframes(data)
-                    _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                    _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                         stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
             except Exception:
                 pass
@@ -397,7 +403,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception as e:
                             log.warning(f"Face detect sound failed: {e}")
@@ -476,7 +482,7 @@ class GimbalArbiter:
                                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                     w.writeframes(data)
                                 import subprocess
-                                subprocess.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         except Exception:
                             try:
@@ -555,7 +561,7 @@ class GimbalArbiter:
                                         with _w.open(tmp, 'w') as w:
                                             w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
                                             w.writeframes(data)
-                                        _sp.Popen(['aplay', '-D', 'plughw:3,0', '-q', tmp],
+                                        _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
                                             stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
                                 except Exception:
                                     pass
@@ -659,6 +665,36 @@ class GimbalArbiter:
                     self._send(cmd)
 
             self._last_known_objects = current_objects
+
+            # 6. CONTINUOUS MOTION SOUNDS: warble on any significant motion
+            motion_regions = cv_snap.get("motion_region_count", 0)
+            if (motion_regions > 0
+                    and now_react - self._last_motion_sound > self._motion_sound_cooldown
+                    and not has_face):  # Don't warble when tracking a face
+                # Only sound on new/growing motion, not sustained same-size
+                if motion_regions > self._last_motion_regions or self._last_motion_regions == 0:
+                    self._last_motion_sound = now_react
+                    motion_pct = motion_regions * 500.0 / (CAPTURE_W * CAPTURE_H)  # Rough estimate
+                    def _play_motion(mp=motion_pct):
+                        try:
+                            from audio_harmony import render_motion_detect
+                            import struct as _s, tempfile, wave as _w, subprocess as _sp
+                            samples = render_motion_detect(min(0.5, mp))
+                            if samples:
+                                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+                                    tmp = f.name
+                                clamped = [max(-1.0, min(1.0, s)) for s in samples]
+                                int_s = [int(s * 32767) for s in clamped]
+                                data = _s.pack('<%dh' % len(int_s), *int_s)
+                                with _w.open(tmp, 'w') as w:
+                                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+                                    w.writeframes(data)
+                                _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
+                                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                        except Exception:
+                            pass
+                    threading.Thread(target=_play_motion, daemon=True).start()
+            self._last_motion_regions = motion_regions
 
             return None
 
