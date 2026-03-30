@@ -66,6 +66,7 @@ class OverlayRenderer:
         self._event_flash_until = 0.0
         self._last_person_time = 0.0
         self._last_cat_time = 0.0
+        self._event_history: list[tuple[float, str, tuple]] = []  # (time, text, color)
 
         # Cached state
         self._drives = {}
@@ -212,17 +213,26 @@ class OverlayRenderer:
                 self._event_flash_color = C_GOLD
                 self._event_flash_until = now + 2.0
                 self._last_person_time = now
+                self._push_event(now, "PERSON", C_GOLD)
             elif name == "cat" and now - self._last_cat_time > 5.0:
                 self._event_flash_text = "CAT DETECTED"
                 self._event_flash_color = C_MAGENTA
                 self._event_flash_until = now + 2.0
                 self._last_cat_time = now
+                self._push_event(now, "CAT", C_MAGENTA)
+
+        # --- LOW LIGHT WARNING ---
+        mean_brightness = np.mean(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+        if mean_brightness < 15:
+            self._box(frame, fw // 2 - 45, 26, 90, 14)
+            cv2.putText(frame, "LOW LIGHT", (fw // 2 - 40, 37), FONT, 0.35, C_RED, 1)
 
         # --- STUCK FLASH ---
         if stuck:
             self._event_flash_text = "STUCK"
             self._event_flash_color = C_RED
             self._event_flash_until = now + 1.0
+            self._push_event(now, "STUCK", C_RED)
 
         # --- EVENT FLASH ---
         if now < self._event_flash_until:
@@ -370,12 +380,36 @@ class OverlayRenderer:
             heading = round((math.degrees(math.atan2(my, mx)) + 360) % 360, 0)
             cv2.putText(frame, f"HDG:{heading:.0f}", (4, ly), FONT, 0.28, C_CYAN, 1)
 
+        # --- EVENT HISTORY (left side, below left panel) ---
+        if self._event_history:
+            recent = [e for e in self._event_history if now - e[0] < 120]
+            if recent:
+                ey = 120
+                self._box(frame, 0, ey - 2, 90, len(recent) * 11 + 6)
+                cv2.putText(frame, "EVENTS", (4, ey + 8), FONT, 0.22, C_DIM, 1)
+                ey += 14
+                for evt_t, evt_text, evt_color in recent[-5:]:
+                    age = int(now - evt_t)
+                    label = f"{age}s {evt_text}"
+                    fade = max(0.3, 1.0 - age / 120)
+                    c = tuple(int(v * fade) for v in evt_color)
+                    cv2.putText(frame, label, (4, ey), FONT, 0.25, c, 1)
+                    ey += 11
+
         # --- GOAL TEXT (above bottom bar) ---
         if self._goal:
             self._box(frame, 0, fh - 38, fw, 14)
             cv2.putText(frame, self._goal[:65], (6, fh - 28), FONT, 0.28, C_DIM, 1)
 
         return frame
+
+    def _push_event(self, t: float, text: str, color: tuple):
+        """Add event to history, deduplicating within 5s."""
+        if self._event_history and self._event_history[-1][1] == text and t - self._event_history[-1][0] < 5:
+            return
+        self._event_history.append((t, text, color))
+        if len(self._event_history) > 8:
+            self._event_history.pop(0)
 
     def _draw_event_flash(self, frame, text, color, alpha):
         h, w = frame.shape[:2]
