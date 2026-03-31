@@ -349,9 +349,9 @@ class CVPipeline(threading.Thread):
                         det = {
                             "class_id": cls_id, "class_name": cls_name,
                             "confidence": round(conf, 3),
-                            "x": x1, "y": y1, "w": bw, "h": bh,
-                            "cx": (x1 + bw / 2) / w,
-                            "cy": (y1 + bh / 2) / h,
+                            "x": int(x1), "y": int(y1), "w": int(bw), "h": int(bh),
+                            "cx": float((x1 + bw / 2) / w),
+                            "cy": float((y1 + bh / 2) / h),
                         }
                         all_dets.append(det)
                         if cls_id == 0 and bw > 10 and bh > 10:
