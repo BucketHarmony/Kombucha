@@ -48,7 +48,11 @@ class FrameDistributor(threading.Thread):
             return True, self._latest_frame.copy(), self._frame_id
 
     def get_fresh_frame(self, timeout_s: float = 2.0) -> tuple[bool, Optional[np.ndarray], int]:
-        """Wait for a frame newer than the current one."""
+        """Wait for a frame newer than the current one.
+
+        If no fresh frame arrives within timeout, auto-resets the camera
+        and retries once before returning the stale frame.
+        """
         with self._lock:
             old_id = self._frame_id
         deadline = time.time() + timeout_s
@@ -57,6 +61,18 @@ class FrameDistributor(threading.Thread):
             with self._lock:
                 if self._frame_id > old_id and self._latest_frame is not None:
                     return True, self._latest_frame.copy(), self._frame_id
+        # No fresh frame — camera is likely frozen. Auto-reset and retry.
+        log.warning(f"No fresh frame in {timeout_s}s (frame_id stuck at {old_id}). Auto-resetting camera.")
+        if self.reset_camera():
+            # Wait for a fresh frame after reset
+            retry_deadline = time.time() + 3.0
+            while time.time() < retry_deadline:
+                time.sleep(0.1)
+                with self._lock:
+                    if self._frame_id > old_id and self._latest_frame is not None:
+                        log.info("Camera auto-reset recovered fresh frame.")
+                        return True, self._latest_frame.copy(), self._frame_id
+            log.warning("Camera auto-reset did not produce fresh frame.")
         return self.get_latest_frame()
 
     def subscribe(self, maxsize: int = 2) -> queue.Queue:
