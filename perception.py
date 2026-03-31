@@ -94,7 +94,10 @@ class FrameDistributor(threading.Thread):
                     pass
 
     def reset_camera(self) -> bool:
-        """Release and re-open the camera to fix frozen frames."""
+        """Release and re-open the camera to fix frozen frames.
+
+        Includes USB unbind/rebind to recover from autosuspend freezes.
+        """
         with self._lock:
             old_cap = self._cap
             device = None
@@ -105,8 +108,23 @@ class FrameDistributor(threading.Thread):
                 log.info("Released old camera capture")
                 self._cap = None
 
-        # Brief pause for USB device to settle
-        time.sleep(1.0)
+        # USB unbind/rebind to recover from autosuspend freeze
+        import subprocess
+        for usb_id in ["1-1"]:
+            try:
+                unbind = Path("/sys/bus/usb/drivers/usb/unbind")
+                bind = Path("/sys/bus/usb/drivers/usb/bind")
+                subprocess.run(["sudo", "sh", "-c", f"echo {usb_id} > {unbind}"],
+                               timeout=3, capture_output=True)
+                time.sleep(1.0)
+                subprocess.run(["sudo", "sh", "-c", f"echo {usb_id} > {bind}"],
+                               timeout=3, capture_output=True)
+                log.info(f"USB unbind/rebind for {usb_id}")
+            except Exception as e:
+                log.warning(f"USB rebind failed for {usb_id}: {e}")
+
+        # Pause for USB device to settle
+        time.sleep(2.0)
 
         # Re-init camera using hardware helper
         from hardware import init_camera

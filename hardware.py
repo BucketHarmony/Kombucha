@@ -250,18 +250,30 @@ def _disable_usb_autosuspend():
     usb_devices_path = Path("/sys/bus/usb/devices")
     if not usb_devices_path.exists():
         return
+    needs_sudo = False
     for device_dir in usb_devices_path.iterdir():
         power_control = device_dir / "power" / "control"
         if power_control.exists():
             try:
                 current = power_control.read_text().strip()
                 if current == "auto":
-                    power_control.write_text("on")
-                    log.info(f"Disabled USB autosuspend for {device_dir.name}")
-            except PermissionError:
-                log.debug(f"Cannot set power/control for {device_dir.name} (no permission)")
+                    try:
+                        power_control.write_text("on")
+                        log.info(f"Disabled USB autosuspend for {device_dir.name}")
+                    except PermissionError:
+                        needs_sudo = True
             except OSError:
                 pass
+    if needs_sudo:
+        try:
+            subprocess.run(
+                ["sudo", "sh", "-c",
+                 "for f in /sys/bus/usb/devices/*/power/control; do echo on > \"$f\" 2>/dev/null; done"],
+                timeout=5, capture_output=True
+            )
+            log.info("Disabled USB autosuspend via sudo for all devices")
+        except Exception as e:
+            log.warning(f"Failed to disable USB autosuspend via sudo: {e}")
 
 
 def init_camera() -> Optional[cv2.VideoCapture]:
