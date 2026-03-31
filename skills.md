@@ -115,6 +115,8 @@ Accumulated physical knowledge from operating in the world.
 - Mirror event: instinct tracks the person holding a mirror (not the reflection). Rover sees its own chassis in the reflection — black body, yellow frame, gimbal, cables.
 - Drive symmetry at 20.7m session distance can be excellent (0.96-1.01) — cable routing/position matters more than absolute distance for wheel restriction.
 - In-place turn rate: ~36 degrees per 1000ms at L=1.04 R=-1.04 on hardwood (measured 25deg in 700ms).
+- At 24.96m session distance, cable can completely lock right wheel (R odom=0, L runs free at ~1.0 m/s). Causes uncontrolled counterclockwise pivot.
+- 400ms drives at 100% power produce near-zero movement — all startup lag. Minimum effective turn at 100%: 600ms.
 
 ## Audio System (2026-03-28)
 
