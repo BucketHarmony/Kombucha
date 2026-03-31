@@ -1,14 +1,14 @@
 {
-  "last_tick": 369,
-  "wake_count": 222,
-  "last_invocation": "2026-03-31T18:00:30-04:00",
+  "last_tick": 370,
+  "wake_count": 223,
+  "last_invocation": "2026-03-31T19:00:58-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "sheepish",
+  "last_mood": "exasperated",
   "drives": {
-    "wanderlust": 0.7,
-    "curiosity": 0.0,
+    "wanderlust": 0.6,
+    "curiosity": 0.05,
     "social": 0.0,
-    "builder": 0.5,
+    "builder": 0.75,
     "expression": 0.0,
     "frustration": 0.0
   }
