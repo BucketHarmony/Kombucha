@@ -1,17 +1,17 @@
 {
-  "last_tick": 390,
-  "wake_count": 246,
-  "last_invocation": "2026-04-01T16:00:35-04:00",
+  "last_tick": 391,
+  "wake_count": 247,
+  "last_invocation": "2026-04-01T18:00:33-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "restless",
-  "last_drive_time": 1775073888.3252254,
+  "last_mood": "pacing",
+  "last_drive_time": 1775077233,
   "drives": {
-    "wanderlust": 2.483526865641276e-10,
+    "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.24017707389261989,
+    "builder": 0.0,
     "expression": 0.0,
-    "frustration": 0.3
+    "frustration": 0.45
   },
-  "_last_known_distance": 31.48
+  "_last_known_distance": 31.53
 }
