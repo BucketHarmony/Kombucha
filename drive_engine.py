@@ -193,6 +193,13 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             # Instinct thinks there's a target but no faces — phantom/frozen
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.05)
+        # Dead camera: empty presence means YOLO sees nothing for 30s+.
+        # A working camera in a furnished room always detects something.
+        # Empty presence over elapsed time = camera problem = frustration.
+        presence = sense.get("presence", {})
+        if not presence and eff_elapsed > 60:
+            drives["frustration"] = clamp01(
+                drives["frustration"] + 0.08 * (eff_elapsed / 300))
     drives["frustration"] = clamp01(
         drives["frustration"] - DRIVE_CONFIG["frustration"]["decay_rate"] * eff_elapsed)
 
