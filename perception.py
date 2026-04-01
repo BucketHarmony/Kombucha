@@ -74,7 +74,8 @@ class FrameDistributor(threading.Thread):
                         log.info("Camera auto-reset recovered fresh frame.")
                         return True, self._latest_frame.copy(), self._frame_id
             log.warning("Camera auto-reset did not produce fresh frame.")
-        return self.get_latest_frame()
+        # Return failure instead of stale cached frame — honest about camera state
+        return False, None, 0
 
     def subscribe(self, maxsize: int = 2) -> queue.Queue:
         """Create a subscription queue for continuous consumers."""
@@ -160,6 +161,8 @@ class FrameDistributor(threading.Thread):
                 old_cap.release()
                 log.info("Released old camera capture")
                 self._cap = None
+            self._latest_frame = None  # Clear stale frame immediately
+            self._frame_id = 0  # Reset so next real frame is detected as fresh
 
         # Find camera USB device dynamically instead of hardcoding
         import subprocess
