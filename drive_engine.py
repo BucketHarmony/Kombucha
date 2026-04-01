@@ -22,9 +22,8 @@ STATE_FILE = Path("/opt/kombucha/state/body_state.json")
 
 DRIVE_CONFIG = {
     "wanderlust": {
-        "charge_rate": 0.003,       # per second when stationary
-        "decay_rate": 0.015,        # per second when moving (faster decay so it actually drops)
         "threshold": 0.8,
+        "max_hours": 4.0,           # hours without movement to reach 100%
         "description": "Restlessness. Need to move.",
     },
     "social": {
@@ -84,6 +83,18 @@ def clamp01(v: float) -> float:
     return max(0.0, min(1.0, v))
 
 
+def _seconds_since_last_drive(state: dict) -> float:
+    """Check time since last movement. Uses last_drive_time from state."""
+    ldt = state.get("last_drive_time")
+    if ldt:
+        try:
+            return time.time() - float(ldt)
+        except (TypeError, ValueError):
+            pass
+    # Fallback: assume it's been a while
+    return 7200  # 2 hours
+
+
 def _seconds_since_last_commit():
     """Check git log for time since last code commit."""
     try:
@@ -114,13 +125,13 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
     for old in ["attachment", "cringe"]:
         drives.pop(old, None)
 
-    # --- Wanderlust: charges when stationary, decays when moving ---
-    if sense and sense.get("moving", False):
-        drives["wanderlust"] = clamp01(
-            drives["wanderlust"] - DRIVE_CONFIG["wanderlust"]["decay_rate"] * eff_elapsed)
-    else:
-        drives["wanderlust"] = clamp01(
-            drives["wanderlust"] + DRIVE_CONFIG["wanderlust"]["charge_rate"] * eff_elapsed)
+    # --- Wanderlust: directly computed from time since last movement ---
+    # Like builder, this is not accumulated — it reflects current staleness.
+    # Rises after 30min, hits threshold (0.8) at ~3.2h, maxes at 4h.
+    secs_since_drive = _seconds_since_last_drive(state)
+    hours_idle = secs_since_drive / 3600
+    max_hours = DRIVE_CONFIG["wanderlust"]["max_hours"]
+    drives["wanderlust"] = clamp01(hours_idle / max_hours)
 
     # --- Social: charges when face visible ---
     if sense and sense.get("faces", 0) > 0:
@@ -185,7 +196,11 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
 def relieve_drive(state: dict, drive_name: str, amount: float = 0.3) -> dict:
     drives = state.get("drives", {})
     # Builder and expression have specific relief amounts; others use default
-    if drive_name == "builder":
+    if drive_name == "wanderlust":
+        # Record movement time — wanderlust is computed from this
+        state["last_drive_time"] = time.time()
+        drives["wanderlust"] = 0.0  # Immediate reset on movement
+    elif drive_name == "builder":
         drives["builder"] = clamp01(
             drives.get("builder", 0) - DRIVE_CONFIG["builder"]["decay_on_commit"])
     elif drive_name == "expression":

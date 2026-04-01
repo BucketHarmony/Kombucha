@@ -8,5 +8,5 @@
     "ticks_collected": 0
   },
   "measurements": [],
-  "conclusion": null
+  "conclusion": "ABANDONED — 2026-04-01 dream session. Camera has been frozen or disconnected for 13 of 26 ticks today, making tracking quality unmeasurable. Cannot collect baseline data when the camera barely works. Will revisit when USB stability is resolved. The camera physically disconnected at tick 372 (27m session distance, likely cable strain on USB connector) and has not recovered. Fixing camera reliability is prerequisite to any perception experiment."
 }
