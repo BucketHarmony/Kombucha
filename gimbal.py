@@ -31,6 +31,33 @@ from hardware import (
 # Audio — import lazily to avoid circular deps / missing module
 _tone_player = None
 
+# Audio device for aplay — auto-detected on first use
+try:
+    from audio_device import find_playback_device
+    AUDIO_DEVICE = find_playback_device()
+except Exception:
+    AUDIO_DEVICE = "plughw:3,0"
+
+
+def _play_wav_samples(samples, volume=0.5):
+    """Write float samples to a temp WAV and play via aplay. Non-blocking."""
+    if not samples:
+        return
+    import struct as _s, tempfile, wave as _w, subprocess as _sp
+    try:
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
+            tmp = f.name
+        clamped = [max(-1.0, min(1.0, s * volume)) for s in samples]
+        int_s = [int(s * 32767) for s in clamped]
+        data = _s.pack('<%dh' % len(int_s), *int_s)
+        with _w.open(tmp, 'w') as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
+            w.writeframes(data)
+        _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
+            stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+    except Exception:
+        pass
+
 def _get_tone_player():
     global _tone_player
     if _tone_player is None:
@@ -203,19 +230,8 @@ class GimbalArbiter:
         def _do():
             try:
                 from audio_harmony import render_servo_sound
-                import struct as _s, tempfile, wave as _w, subprocess as _sp
                 samples = render_servo_sound(pan_from, pan_to, tilt_from, tilt_to, purpose)
-                if samples:
-                    with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                        tmp = f.name
-                    clamped = [max(-1.0, min(1.0, s * 0.5)) for s in samples]
-                    int_s = [int(s * 32767) for s in clamped]
-                    data = _s.pack('<%dh' % len(int_s), *int_s)
-                    with _w.open(tmp, 'w') as w:
-                        w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
-                        w.writeframes(data)
-                    _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
-                        stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                _play_wav_samples(samples, volume=0.5)
             except Exception:
                 pass
         threading.Thread(target=_do, daemon=True).start()
@@ -390,21 +406,8 @@ class GimbalArbiter:
                             if target:
                                 face_pct = (target.get("w", 50) * target.get("h", 50)) / (CAPTURE_W * CAPTURE_H)
                             from audio_harmony import render_face_detect
-                            import struct as _struct
                             samples = render_face_detect(face_pct)
-                            if samples:
-                                import tempfile, wave as _wave
-                                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                                    tmp = f.name
-                                clamped = [max(-1.0, min(1.0, s)) for s in samples]
-                                int_s = [int(s * 32767) for s in clamped]
-                                data = _struct.pack('<%dh' % len(int_s), *int_s)
-                                with _wave.open(tmp, 'w') as w:
-                                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
-                                    w.writeframes(data)
-                                import subprocess
-                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            _play_wav_samples(samples, volume=1.0)
                         except Exception as e:
                             log.warning(f"Face detect sound failed: {e}")
                             # Fallback to simple greeting
@@ -469,21 +472,8 @@ class GimbalArbiter:
                             total_area = sum(r[2] * r[3] for r in regions) if regions else 500
                             motion_pct = total_area / (CAPTURE_W * CAPTURE_H)
                             from audio_harmony import render_motion_detect
-                            import struct as _struct
                             samples = render_motion_detect(motion_pct)
-                            if samples:
-                                import tempfile, wave as _wave
-                                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                                    tmp = f.name
-                                clamped = [max(-1.0, min(1.0, s)) for s in samples]
-                                int_s = [int(s * 32767) for s in clamped]
-                                data = _struct.pack('<%dh' % len(int_s), *int_s)
-                                with _wave.open(tmp, 'w') as w:
-                                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
-                                    w.writeframes(data)
-                                import subprocess
-                                subprocess.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            _play_wav_samples(samples, volume=1.0)
                         except Exception:
                             try:
                                 tp.play_mood("curious")
@@ -551,19 +541,8 @@ class GimbalArbiter:
                             def _play_obj(n=name, c=conf):
                                 try:
                                     from audio_harmony import render_object_detect
-                                    import struct as _s, tempfile, wave as _w, subprocess as _sp
                                     samples = render_object_detect(n, c)
-                                    if samples:
-                                        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                                            tmp = f.name
-                                        clamped = [max(-1.0, min(1.0, s)) for s in samples]
-                                        int_s = [int(s * 32767) for s in clamped]
-                                        data = _s.pack('<%dh' % len(int_s), *int_s)
-                                        with _w.open(tmp, 'w') as w:
-                                            w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
-                                            w.writeframes(data)
-                                        _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
-                                            stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                                    _play_wav_samples(samples, volume=1.0)
                                 except Exception:
                                     pass
                             threading.Thread(target=_play_obj, daemon=True).start()
@@ -681,19 +660,8 @@ class GimbalArbiter:
                     def _play_motion(mp=motion_pct):
                         try:
                             from audio_harmony import render_motion_detect
-                            import struct as _s, tempfile, wave as _w, subprocess as _sp
                             samples = render_motion_detect(min(0.5, mp))
-                            if samples:
-                                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                                    tmp = f.name
-                                clamped = [max(-1.0, min(1.0, s)) for s in samples]
-                                int_s = [int(s * 32767) for s in clamped]
-                                data = _s.pack('<%dh' % len(int_s), *int_s)
-                                with _w.open(tmp, 'w') as w:
-                                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
-                                    w.writeframes(data)
-                                _sp.Popen(['aplay', '-D', AUDIO_DEVICE, '-q', tmp],
-                                    stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                            _play_wav_samples(samples, volume=1.0)
                         except Exception:
                             pass
                     threading.Thread(target=_play_motion, daemon=True).start()
