@@ -444,6 +444,10 @@ def get_sense():
         wake_recorder=wake_recorder,
     )
 
+    # Camera health
+    if frame_distributor:
+        result["camera_ok"] = frame_distributor.camera_ok
+
     # Append detection session summary (what's been seen and for how long)
     if detection_logger:
         result["detection_summary"] = detection_logger.get_summary()

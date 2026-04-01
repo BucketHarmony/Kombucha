@@ -38,6 +38,7 @@ class FrameDistributor(threading.Thread):
         self._lock = threading.Lock()
         self._latest_frame: Optional[np.ndarray] = None
         self._frame_id: int = 0
+        self._last_frame_time: float = 0.0
         self._subscribers: list[queue.Queue] = []
 
     def get_latest_frame(self) -> tuple[bool, Optional[np.ndarray], int]:
@@ -103,6 +104,7 @@ class FrameDistributor(threading.Thread):
             with self._lock:
                 self._latest_frame = frame
                 self._frame_id += 1
+                self._last_frame_time = time.time()
             fid = self._frame_id
             for q in self._subscribers:
                 try:
@@ -110,27 +112,67 @@ class FrameDistributor(threading.Thread):
                 except queue.Full:
                     pass
 
+    @property
+    def camera_ok(self) -> bool:
+        """True if camera is producing fresh frames (updated within last 5s)."""
+        with self._lock:
+            if self._latest_frame is None:
+                return False
+            return (time.time() - self._last_frame_time) < 5.0
+
+    def _find_camera_usb_ids(self) -> list[str]:
+        """Scan /sys/bus/usb/devices for video-class USB devices (camera).
+
+        Returns list of USB device IDs (e.g. ['1-2.1']) that expose a
+        video4linux interface. This replaces the hardcoded '1-1' path.
+        """
+        import subprocess
+        usb_path = Path("/sys/bus/usb/devices")
+        if not usb_path.exists():
+            return []
+        camera_ids = []
+        for dev_dir in usb_path.iterdir():
+            if not dev_dir.is_dir() or dev_dir.name.startswith("usb"):
+                continue
+            # Check if this device or its interfaces have a video4linux child
+            for iface in dev_dir.glob("*/video4linux"):
+                camera_ids.append(dev_dir.name)
+                break
+            else:
+                # Also check direct video4linux child (some device trees)
+                if (dev_dir / "video4linux").exists():
+                    camera_ids.append(dev_dir.name)
+        if camera_ids:
+            log.info(f"Found camera USB device(s): {camera_ids}")
+        else:
+            log.warning("No USB video devices found in /sys/bus/usb/devices")
+        return camera_ids
+
     def reset_camera(self) -> bool:
         """Release and re-open the camera to fix frozen frames.
 
-        Includes USB unbind/rebind to recover from autosuspend freezes.
+        Dynamically finds the camera USB device and performs unbind/rebind
+        to recover from autosuspend freezes.
         """
         with self._lock:
             old_cap = self._cap
-            device = None
             if old_cap is not None:
-                # Try to get the device path/index before releasing
-                device = old_cap.get(cv2.CAP_PROP_POS_FRAMES)  # just for logging
                 old_cap.release()
                 log.info("Released old camera capture")
                 self._cap = None
 
-        # USB unbind/rebind to recover from autosuspend freeze
+        # Find camera USB device dynamically instead of hardcoding
         import subprocess
-        for usb_id in ["1-1"]:
+        usb_ids = self._find_camera_usb_ids()
+        if not usb_ids:
+            # Fallback: try common paths
+            usb_ids = ["1-1", "1-2", "1-2.1", "1-2.2"]
+            log.warning(f"No camera USB device found, trying fallback IDs: {usb_ids}")
+
+        unbind = Path("/sys/bus/usb/drivers/usb/unbind")
+        bind = Path("/sys/bus/usb/drivers/usb/bind")
+        for usb_id in usb_ids:
             try:
-                unbind = Path("/sys/bus/usb/drivers/usb/unbind")
-                bind = Path("/sys/bus/usb/drivers/usb/bind")
                 subprocess.run(["sudo", "sh", "-c", f"echo {usb_id} > {unbind}"],
                                timeout=3, capture_output=True)
                 time.sleep(1.0)
