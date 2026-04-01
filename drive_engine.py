@@ -184,6 +184,9 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             drives["expression"] + DRIVE_CONFIG["expression"]["charge_rate"] * eff_elapsed)
 
     # --- Frustration: charges on failures ---
+    # Track whether an ongoing frustration source is active this update.
+    # If so, suppress decay — frustration should accumulate while the problem persists.
+    ongoing_frustration = False
     if sense:
         if sense.get("stuck", False):
             drives["frustration"] = clamp01(
@@ -193,15 +196,20 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             # Instinct thinks there's a target but no faces — phantom/frozen
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.05)
+            ongoing_frustration = True
         # Dead camera: empty presence means YOLO sees nothing for 30s+.
         # A working camera in a furnished room always detects something.
         # Empty presence over elapsed time = camera problem = frustration.
         presence = sense.get("presence", {})
         if not presence and eff_elapsed > 60:
             drives["frustration"] = clamp01(
-                drives["frustration"] + 0.08 * (eff_elapsed / 300))
-    drives["frustration"] = clamp01(
-        drives["frustration"] - DRIVE_CONFIG["frustration"]["decay_rate"] * eff_elapsed)
+                drives["frustration"] + 0.15 * (eff_elapsed / 300))
+            ongoing_frustration = True
+    # Only decay frustration when no ongoing source is active.
+    # Otherwise the decay (0.002 * 300 = 0.6) overwhelms any charge.
+    if not ongoing_frustration:
+        drives["frustration"] = clamp01(
+            drives["frustration"] - DRIVE_CONFIG["frustration"]["decay_rate"] * eff_elapsed)
 
     state["drives"] = drives
     return state
