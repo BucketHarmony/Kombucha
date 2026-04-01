@@ -135,10 +135,16 @@ class OverlayRenderer:
             pass
 
     def _box(self, frame, x, y, w, h, alpha=C_BG_ALPHA):
-        """Draw a semi-transparent background box."""
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (x, y), (x + w, y + h), C_BG, -1)
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        """Draw a semi-transparent background box using ROI blending."""
+        fh, fw = frame.shape[:2]
+        x1, y1 = max(0, x), max(0, y)
+        x2, y2 = min(fw, x + w), min(fh, y + h)
+        if x2 <= x1 or y2 <= y1:
+            return
+        roi = frame[y1:y2, x1:x2]
+        bg = np.full_like(roi, C_BG)
+        cv2.addWeighted(bg, alpha, roi, 1 - alpha, 0, roi)
+        frame[y1:y2, x1:x2] = roi
 
     def render(self, frame: np.ndarray) -> np.ndarray:
         frame = frame.copy()
@@ -418,8 +424,6 @@ class OverlayRenderer:
         (tw, th), _ = cv2.getTextSize(text, FONT, scale, thickness)
         x = (w - tw) // 2
         y = (h + th) // 2 - 40
-        overlay = frame.copy()
-        cv2.rectangle(overlay, (x - 12, y - th - 12), (x + tw + 12, y + 12), C_BG, -1)
-        cv2.addWeighted(overlay, alpha * C_BG_ALPHA, frame, 1 - alpha * C_BG_ALPHA, 0, frame)
+        self._box(frame, x - 12, y - th - 12, tw + 24, th + 24, alpha * C_BG_ALPHA)
         c = tuple(int(v * alpha) for v in color)
         cv2.putText(frame, text, (x, y), FONT, scale, c, thickness)
