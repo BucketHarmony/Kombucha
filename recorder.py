@@ -212,6 +212,7 @@ class WakeRecorder:
     """Records snapshots and video clips when instinct activates."""
 
     MAX_EVENTS = 50
+    MAX_WAKE_DURATION_S = 300  # Auto-close wakes after 5 minutes
 
     def __init__(self, output_dir: Path, frame_dist, cv_pipe):
         self._output_dir = output_dir
@@ -438,6 +439,28 @@ class WakeRecorder:
         """Return path to most recent wake dossier JSON, if any."""
         dossiers = sorted(self._output_dir.glob("dossier_*.json"))
         return dossiers[-1] if dossiers else None
+
+    def check_timeout(self) -> bool:
+        """Auto-disengage if wake has exceeded MAX_WAKE_DURATION_S.
+
+        Returns True if a stale wake was closed.
+        Call this periodically from the gimbal update loop.
+        """
+        should_close = False
+        with self._lock:
+            if not self._active or not self._wake_start:
+                return False
+            if time.time() - self._wake_start > self.MAX_WAKE_DURATION_S:
+                log.warning(
+                    f"Wake {self._wake_id} exceeded {self.MAX_WAKE_DURATION_S}s "
+                    f"— auto-closing stale wake"
+                )
+                should_close = True
+        if should_close:
+            self.disengage()
+            log.info("Stale wake auto-disengaged")
+            return True
+        return False
 
     @property
     def is_active(self) -> bool:

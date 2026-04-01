@@ -667,6 +667,10 @@ class GimbalArbiter:
                     threading.Thread(target=_play_motion, daemon=True).start()
             self._last_motion_regions = motion_regions
 
+            # Auto-close stale wake events (e.g. camera died during instinct)
+            if self._wake_recorder:
+                self._wake_recorder.check_timeout()
+
             return None
 
     def _track_target(self, target: dict) -> Optional[dict]:
