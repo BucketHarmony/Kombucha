@@ -128,6 +128,13 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
     # --- Wanderlust: directly computed from time since last movement ---
     # Like builder, this is not accumulated — it reflects current staleness.
     # Rises after 30min, hits threshold (0.8) at ~3.2h, maxes at 4h.
+    # Auto-detect movement from sense distance to keep last_drive_time current.
+    if sense:
+        current_dist = sense.get("distance_session_m", 0)
+        prev_dist = state.get("_last_known_distance", 0)
+        if current_dist > prev_dist + 0.01:  # moved at least 1cm
+            state["last_drive_time"] = time.time()
+            state["_last_known_distance"] = current_dist
     secs_since_drive = _seconds_since_last_drive(state)
     hours_idle = secs_since_drive / 3600
     max_hours = DRIVE_CONFIG["wanderlust"]["max_hours"]
