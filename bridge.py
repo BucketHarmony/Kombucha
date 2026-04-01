@@ -444,9 +444,17 @@ def get_sense():
         wake_recorder=wake_recorder,
     )
 
-    # Camera health
+    # Camera health — always report status, even when camera is absent
     if frame_distributor:
         result["camera_ok"] = frame_distributor.camera_ok
+        with frame_distributor._lock:
+            if frame_distributor._last_frame_time > 0:
+                result["frame_age_s"] = round(time.time() - frame_distributor._last_frame_time, 1)
+            else:
+                result["frame_age_s"] = None
+    else:
+        result["camera_ok"] = False
+        result["frame_age_s"] = None
 
     # Append detection session summary (what's been seen and for how long)
     if detection_logger:
