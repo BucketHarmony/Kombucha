@@ -65,10 +65,9 @@ class IMUAudioReactor(threading.Thread):
         """Play raw samples via aplay."""
         if not samples:
             return
-        import struct, tempfile, wave, subprocess
+        import struct, wave, subprocess
+        tmp = '/tmp/kombucha_imu_audio.wav'
         try:
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                tmp = f.name
             clamped = [max(-1.0, min(1.0, s * 0.4)) for s in samples]
             int_s = [int(s * 32767) for s in clamped]
             data = struct.pack('<%dh' % len(int_s), *int_s)

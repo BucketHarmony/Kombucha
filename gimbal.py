@@ -43,10 +43,9 @@ def _play_wav_samples(samples, volume=0.5):
     """Write float samples to a temp WAV and play via aplay. Non-blocking."""
     if not samples:
         return
-    import struct as _s, tempfile, wave as _w, subprocess as _sp
+    import struct as _s, wave as _w, subprocess as _sp
+    tmp = '/tmp/kombucha_gimbal_audio.wav'
     try:
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-            tmp = f.name
         clamped = [max(-1.0, min(1.0, s * volume)) for s in samples]
         int_s = [int(s * 32767) for s in clamped]
         data = _s.pack('<%dh' % len(int_s), *int_s)

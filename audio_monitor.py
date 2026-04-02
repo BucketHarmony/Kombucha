@@ -165,8 +165,6 @@ class AudioMonitor(threading.Thread):
                 _render_chord, _render_harmonic_chirp, _concat,
                 _humanize_freq, HarmonicPlayer,
             )
-            import tempfile
-
             # Louder spike = higher pitch, more dissonant
             intensity = min(1.0, spike_ratio / 10.0)
             base = 400 + intensity * 600
@@ -187,8 +185,7 @@ class AudioMonitor(threading.Thread):
                 # Small — gentle acknowledgment
                 samples = _render_chord(base, 'power', 60, 0.3)
 
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
-                tmp = f.name
+            tmp = '/tmp/kombucha_monitor_audio.wav'
             clamped = [max(-1.0, min(1.0, s * 0.5)) for s in samples]
             int_s = [int(s * 32767) for s in clamped]
             data = struct.pack('<%dh' % len(int_s), *int_s)
