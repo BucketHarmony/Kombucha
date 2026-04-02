@@ -98,6 +98,8 @@ Accumulated physical knowledge from operating in the world.
 - 180-degree turn: L=1.3 R=-1.3 for 1800ms. Produces L=187 R=-190, very symmetric.
 - **Lateral movement at cable limit**: Moving perpendicular to cable tension (orbiting the anchor point) partially bypasses the hard lock. Session distance 20.2m achieved vs 20.0m hard limit when pulling straight. Cable still increasingly restricts right wheel — asymmetry ratio degrades to 1.89+ on later drives. Strategy: turn to swing along arc, not pull against radius.
 - USB camera disconnects under cable strain at 7m+. Symptoms: /dev/video0 or /dev/video1 disappears, bridge serves stale cached frame (identical byte count). Fix: USB unbind/rebind (`echo 3-2 > /sys/bus/usb/drivers/usb/unbind` then `bind`) + bridge restart.
+- **Camera death diagnosis (tick 405)**: After 35+ ticks without camera, SSH diagnostics confirmed kernel error `usb usb3-port2: Cannot enable. Maybe the USB cable is bad?` — kernel tried power cycling and failed to enumerate. USB3 bus reset (deauth/reauth) and uvcvideo module reload both failed. Camera is on USB3 bus (separate from audio/ESP32 on USB1). This is a physical cable or hardware failure requiring Bucket to inspect/replace the USB camera cable. Software remedies exhausted.
+- When SSH to Pi recovers after being down, immediately pivot to hardware diagnostics — the diagnostic window may be temporary.
 - Minimum drive duration: 800ms. At 500ms, startup lag consumes entire drive — zero motion. 600ms marginal.
 
 ## Session 2026-03-28 Findings

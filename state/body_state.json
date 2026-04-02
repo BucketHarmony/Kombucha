@@ -1,19 +1,19 @@
 {
-  "last_tick": 404,
-  "wake_count": 261,
-  "last_invocation": "2026-04-02T07:01:39-04:00",
+  "last_tick": 405,
+  "wake_count": 262,
+  "last_invocation": "2026-04-02T08:00:51-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "restless",
-  "last_drive_time": 1775131299.0,
+  "last_mood": "determined",
+  "last_drive_time": 1743516051.0,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.0,
+    "builder": 0.11365388602018356,
     "expression": 0.0,
     "frustration": 1.0
   },
-  "_last_known_distance": 35.208,
+  "_last_known_distance": 35.441,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 393,
@@ -21,12 +21,13 @@
   "_right_turns_avoid_cable": true,
   "_cable_direction_confirmed": true,
   "_cable_catches_in_reverse": true,
-  "_ssh_failing": true,
+  "_ssh_failing": false,
   "_tether_hard_stop_confirmed": true,
   "_tether_slack_cm": 33,
   "_self_flinch_fixed_tick": 401,
   "_frustration_sources": [
     "camera_dead"
   ],
-  "_frustration_onset": 1775124001.2915938
+  "_frustration_onset": 1775124001.2915938,
+  "_camera_diagnosis": "USB3 port2 Cannot enable - kernel says cable may be bad. Bus reset and module reload both failed. Physical intervention required."
 }
