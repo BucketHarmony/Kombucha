@@ -159,3 +159,9 @@ Accumulated physical knowledge from operating in the world.
 - Two 5000ms drives in different directions (forward and 45-degrees-right) produced identical results: 33cm travel, hard stop at t=3.5s, bounce-back, silence. Rover is at tether limit with ~33cm of slack in all tested forward directions.
 - Requesting drives longer than available cable slack wastes duration — rover simply stops and idles. Shorter drives (1200ms) are more efficient at cable limit than maximum-length drives.
 - Ground speed at 80% power: ~11cm/s effective (33cm in 3.0s of actual wheel time). Significantly slower than wheel speed (~1.0 m/s) suggests — either wheel slip or encoder calibration discrepancy.
+
+## Code Quality Findings (2026-04-02)
+
+- Self-flinch bug root cause: gimbal.py `_play_servo_sound()` hard-coded 1.0s motion suppression, but large pans take 1.5-2.5s. MOG2 background subtractor needs multiple frames to adapt after camera moves. Fix: proportional suppression scaled to movement size. (Tick 401)
+- overlay.py anti-pattern: `"key" in str(dict)` to check key membership — converts entire dict to string every frame. Use `dict.get()` instead. (Tick 402)
+- Battery percentage readings during/immediately after drives are unreliable — voltage sag under motor load causes temporary drops of 15-20%. Resting voltage (2+ seconds after drive) is the true reading. (Tick 402)
