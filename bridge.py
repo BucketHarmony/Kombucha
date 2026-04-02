@@ -600,6 +600,10 @@ def get_sense():
     else:
         result["camera_ok"] = False
         result["frame_age_s"] = None
+        result["camera_status"] = "absent"
+        result["camera_watchdog"] = (
+            _camera_watchdog is not None and _camera_watchdog.is_alive()
+        )
 
     # Append detection session summary (what's been seen and for how long)
     if detection_logger:
@@ -758,11 +762,26 @@ def post_action(action: Union[ActionModel, list[ActionModel]]):
 def get_cv_status():
     """Full CV state with detections, target, mode, and queue."""
     if cv_state is None:
-        raise HTTPException(
-            status_code=503, detail={"error": "CV not initialized"}
-        )
+        # Graceful degradation: return blind-mode status instead of 503
+        result = {
+            "status": "blind",
+            "camera_ok": False,
+            "face_count": 0,
+            "detections": [],
+            "tracking": None,
+            "gimbal_mode": "idle",
+            "queue_depth": 0,
+            "watchdog_active": _camera_watchdog is not None
+                and _camera_watchdog.is_alive(),
+        }
+        if gimbal_arbiter:
+            result.update(gimbal_arbiter.snapshot())
+        result["plugged_in"] = _is_plugged_in()
+        result["wheels_locked"] = _is_plugged_in()
+        return result
 
     result = cv_state.snapshot()
+    result["status"] = "active"
     if gimbal_arbiter:
         result.update(gimbal_arbiter.snapshot())
     result["plugged_in"] = _is_plugged_in()
