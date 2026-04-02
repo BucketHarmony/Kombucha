@@ -217,6 +217,13 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
         state["_frustration_sources"] = list(frustration_sources)
         if not prev_sources:
             state["_frustration_onset"] = time.time()
+        # Apply slow decay even while sources are active.
+        # Frustration should not permanently peg at 1.0 — working on the
+        # problem (committing code, making progress) should let it drift
+        # down, even if the root cause (e.g. dead camera) persists.
+        decay_rate = DRIVE_CONFIG["frustration"]["decay_rate"]
+        drives["frustration"] = clamp01(
+            drives["frustration"] - decay_rate * eff_elapsed)
     else:
         # No active sources — use fast recovery rate instead of slow decay.
         # Use raw elapsed_s (not capped eff_elapsed) so recovery works across
