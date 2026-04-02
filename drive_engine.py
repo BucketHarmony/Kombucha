@@ -219,10 +219,11 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             state["_frustration_onset"] = time.time()
     else:
         # No active sources — use fast recovery rate instead of slow decay.
-        # The longer frustration was active, the more satisfying the relief.
+        # Use raw elapsed_s (not capped eff_elapsed) so recovery works across
+        # long heartbeat intervals. 1h gap = 1h of recovery, not 5min.
         recovery_rate = DRIVE_CONFIG["frustration"]["recovery_rate"]
         drives["frustration"] = clamp01(
-            drives["frustration"] - recovery_rate * eff_elapsed)
+            drives["frustration"] - recovery_rate * elapsed_s)
         if drives["frustration"] == 0:
             state.pop("_frustration_sources", None)
             state.pop("_frustration_onset", None)
