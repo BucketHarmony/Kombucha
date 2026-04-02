@@ -256,6 +256,151 @@ class DetectionLogger(threading.Thread):
             self._active.clear()
 
 
+class CameraWatchdog(threading.Thread):
+    """Background thread that polls for USB camera re-appearance.
+
+    When the camera is absent at startup, this thread periodically calls
+    init_camera().  If it succeeds, it wires up the full camera pipeline
+    (FrameDistributor, CVPipeline, VideoRecorder, etc.) so the bridge
+    recovers without a restart.
+    """
+
+    def __init__(self, interval: float = 30.0):
+        super().__init__(daemon=True)
+        self._interval = interval
+        self._running = False
+
+    def run(self):
+        global camera, frame_distributor, cv_state, cv_pipeline
+        global gimbal_arbiter, video_recorder, wake_recorder
+        global heartbeat, detection_logger
+
+        self._running = True
+        log.info(f"Camera watchdog started (polling every {self._interval}s)")
+
+        while self._running:
+            time.sleep(self._interval)
+            if not self._running:
+                break
+
+            # Already recovered?
+            if camera is not None:
+                log.info("Camera watchdog: camera already present, stopping")
+                break
+
+            log.info("Camera watchdog: attempting camera init...")
+            cam = init_camera()
+            if cam is None:
+                log.info("Camera watchdog: no camera found, will retry")
+                continue
+
+            # Camera found — wire up the full pipeline
+            log.info("Camera watchdog: CAMERA FOUND — initializing pipeline")
+            camera = cam
+
+            try:
+                # Frame distributor
+                frame_distributor = FrameDistributor(camera)
+                frame_distributor.start()
+                log.info("Camera watchdog: frame distributor started")
+
+                # CV pipeline
+                cv_state_new = CVState()
+                cv_queue = frame_distributor.subscribe(maxsize=3)
+
+                if telemetry_state:
+                    gimbal_arbiter_new = GimbalArbiter(
+                        cv_state_new, telemetry_state,
+                        serial_port, _serial_lock)
+                    gimbal_arbiter = gimbal_arbiter_new
+                    log.info("Camera watchdog: gimbal arbiter initialized")
+                else:
+                    gimbal_arbiter_new = None
+
+                cv_pipeline_new = CVPipeline(
+                    cv_queue, cv_state_new,
+                    gimbal_arbiter=gimbal_arbiter_new)
+                cv_pipeline_new.start()
+                cv_state = cv_state_new
+                cv_pipeline = cv_pipeline_new
+                log.info("Camera watchdog: CV pipeline started")
+
+                # Video recorder
+                state_path = Path("/opt/kombucha/state/body_state.json")
+                goals_path = Path("/opt/kombucha/goals.md")
+                hud = OverlayRenderer(
+                    cv_pipeline=cv_pipeline,
+                    cv_state=cv_state,
+                    telemetry=telemetry_state,
+                    gimbal_arbiter=gimbal_arbiter,
+                    state_file=state_path if state_path.exists() else None,
+                    goals_file=goals_path if goals_path.exists() else None,
+                )
+                VIDEO_DIR.mkdir(parents=True, exist_ok=True)
+                video_queue = frame_distributor.subscribe(maxsize=5)
+                video_recorder = VideoRecorder(
+                    video_queue, VIDEO_DIR,
+                    cv_pipeline_ref=cv_pipeline, overlay=hud)
+                video_recorder.start()
+                try:
+                    video_recorder.start_session()
+                    log.info("Camera watchdog: video recorder + session started")
+                except Exception:
+                    log.info("Camera watchdog: video recorder started (no session)")
+
+                # Wake recorder
+                WAKE_DIR.mkdir(parents=True, exist_ok=True)
+                wake_recorder = WakeRecorder(
+                    WAKE_DIR, frame_distributor, cv_pipeline)
+                log.info("Camera watchdog: wake recorder initialized")
+
+                # Wire late-binding refs
+                if gimbal_arbiter:
+                    gimbal_arbiter._wake_recorder = wake_recorder
+                    gimbal_arbiter._cv_pipeline = cv_pipeline
+                    if tone_player:
+                        gimbal_arbiter._tone_player = tone_player
+
+                # Detection logger
+                LOG_DIR.mkdir(parents=True, exist_ok=True)
+                detection_logger = DetectionLogger(
+                    cv_pipeline, cv_state, LOG_DIR)
+                detection_logger.start()
+                log.info("Camera watchdog: detection logger started")
+
+                # Heartbeat
+                if gimbal_arbiter:
+                    heartbeat = Heartbeat(
+                        gimbal_arbiter, serial_port, _serial_lock)
+                    heartbeat.start()
+                    log.info("Camera watchdog: heartbeat started")
+
+                log.info("Camera watchdog: FULL PIPELINE RECOVERED")
+
+            except Exception as e:
+                log.error(f"Camera watchdog: pipeline init failed: {e}")
+                # Release the camera so we can retry cleanly
+                try:
+                    camera.release()
+                except Exception:
+                    pass
+                camera = None
+                frame_distributor = None
+                cv_state = None
+                cv_pipeline = None
+                continue
+
+            break  # Success — stop watching
+
+        log.info("Camera watchdog stopped")
+
+    def stop(self):
+        self._running = False
+
+
+_camera_watchdog: Optional[CameraWatchdog] = None
+
+
 def _is_plugged_in() -> bool:
     """Module-level plugged-in check using current override and telemetry."""
     return is_plugged_in(_plugged_in_override, telemetry_state)
@@ -1389,6 +1534,10 @@ def startup():
 
     else:
         log.warning("No camera — video, CV, and frame endpoints unavailable")
+        # Start watchdog to detect camera re-appearance
+        _camera_watchdog = CameraWatchdog(interval=30.0)
+        _camera_watchdog.start()
+        log.info("Camera watchdog launched — will poll for USB camera")
 
     # IMU audio reactor — sounds from physical movement (works without camera)
     if telemetry_state:
