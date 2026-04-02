@@ -1,19 +1,19 @@
 {
-  "last_tick": 405,
-  "wake_count": 263,
-  "last_invocation": "2026-04-02T09:00:01-04:00",
+  "last_tick": 406,
+  "wake_count": 264,
+  "last_invocation": "2026-04-02T10:01:02-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "determined",
-  "last_drive_time": 1775134801.4505997,
+  "last_mood": "searching",
+  "last_drive_time": 1743519662,
   "drives": {
-    "wanderlust": 3.14580069647895e-10,
+    "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.23862684564458,
+    "builder": 0.05,
     "expression": 0.0,
     "frustration": 1.0
   },
-  "_last_known_distance": 35.496,
+  "_last_known_distance": 35.95,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 393,
@@ -29,5 +29,6 @@
     "camera_dead"
   ],
   "_frustration_onset": 1775124001.2915938,
-  "_camera_diagnosis": "USB3 port2 Cannot enable - kernel says cable may be bad. Bus reset and module reload both failed. Physical intervention required."
+  "_camera_diagnosis": "USB3 port2 Cannot enable - kernel says cable may be bad. Bus reset and module reload both failed. Physical intervention required.",
+  "_blind_gesture_added_tick": 406
 }
