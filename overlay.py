@@ -200,7 +200,7 @@ class OverlayRenderer:
         motion_regions = cv_snap.get("motion_region_count", 0)
         gimbal_mode = self._gimbal_arbiter.mode.value if self._gimbal_arbiter else "idle"
         queue_depth = self._gimbal_arbiter.snapshot().get("queue_depth", 0) if self._gimbal_arbiter else 0
-        last_target_age = cv_snap.get("last_target_age_s") if "last_target_age_s" in str(cv_snap) else None
+        last_target_age = cv_snap.get("last_target_age_s")
         wake_active = False
 
         # --- DETECTION BOXES ---
@@ -255,7 +255,7 @@ class OverlayRenderer:
         self._box(frame, 0, 0, fw, 24)
         ts = datetime.now().strftime("%H:%M:%S")
         mode_color = C_GOLD if gimbal_mode == "instinct" else C_GREEN if gimbal_mode == "manual" else C_AMBER
-        rec_dot = "REC" if True else ""  # always recording during ticks
+        rec_dot = "REC"
         top_parts = [
             (ts, C_DIM),
             (f"T{self._tick_num}", C_AMBER) if self._tick_num else None,

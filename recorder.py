@@ -21,6 +21,24 @@ from hardware import CAPTURE_W, CAPTURE_H, JPEG_QUALITY
 
 log = logging.getLogger(__name__)
 
+_DET_COLORS = {
+    "person": (0, 180, 255), "cat": (255, 100, 255),
+    "dog": (255, 180, 0), "chair": (100, 100, 255),
+}
+
+
+def _annotate_detections(frame, detections: list[dict]):
+    """Draw YOLO bounding boxes on a frame copy."""
+    frame = frame.copy()
+    for det in detections:
+        x, y, w, h = det["x"], det["y"], det["w"], det["h"]
+        color = _DET_COLORS.get(det.get("class_name", "?"), (100, 200, 100))
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+        label = f"{det['class_name']} {det['confidence']:.0%}"
+        cv2.putText(frame, label, (x, y - 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+    return frame
+
 
 # -----------------------------------------------------------------------------
 # Video Recorder
@@ -75,18 +93,7 @@ class VideoRecorder(threading.Thread):
                 elif self._cv_pipe:
                     dets = self._cv_pipe.get_detections()
                     if dets:
-                        frame = frame.copy()
-                        colors = {
-                            "person": (0, 180, 255), "cat": (255, 100, 255),
-                            "dog": (255, 180, 0), "chair": (100, 100, 255),
-                        }
-                        for det in dets:
-                            x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-                            color = colors.get(det["class_name"], (100, 200, 100))
-                            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-                            label = f"{det['class_name']} {det['confidence']:.0%}"
-                            cv2.putText(frame, label, (x, y - 6),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+                        frame = _annotate_detections(frame, dets)
                 with self._lock:
                     if self._writer:
                         self._writer.write(frame)
@@ -404,19 +411,7 @@ class WakeRecorder:
 
     def _annotate_frame(self, frame, detections: list[dict]):
         """Draw YOLO bounding boxes on a frame."""
-        frame = frame.copy()
-        colors = {
-            "person": (0, 180, 255), "cat": (255, 100, 255),
-            "dog": (255, 180, 0), "chair": (100, 100, 255),
-        }
-        for det in detections:
-            x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-            color = colors.get(det["class_name"], (100, 200, 100))
-            cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-            label = f"{det['class_name']} {det['confidence']:.0%}"
-            cv2.putText(frame, label, (x, y - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
-        return frame
+        return _annotate_detections(frame, detections)
 
     def get_recent_events(self, n: int = 10) -> list[dict]:
         """Get the N most recent wake events for /sense."""
