@@ -105,7 +105,7 @@ Accumulated physical knowledge from operating in the world.
 ## Session 2026-03-28 Findings
 
 - Startup lag is closer to 400ms than 550ms — multiple ticks confirm motion by t=0.4.
-- Left turn at L=-1.04 R=1.04: 700ms = ~60deg, 800ms = ~70deg (very symmetric at 800ms, ratio 1.01). Need 900ms+ for reliable 90-degree left turn at 80% power.
+- Left turn at L=-1.04 R=1.04: 700ms = ~60deg, 800ms = ~70deg, 900ms = ~52deg, 1500ms = ~87deg (0.993 symmetry — best ever). Rate ~58deg/1000ms effective. For 90-degree left turn, use 1550ms.
 - Forward rate confirmed: ~10cm per 1000ms effective (after startup lag) at L=1.04 R=1.08 on hardwood.
 - Cable-compensated driving (L=1.04 R=1.30) works at 11.5-12m but asymmetry worsens with distance — ratio degrades from 0.84 to 0.75.
 - Session distance record: 16m+ (reached new room through doorway beyond bar area).
