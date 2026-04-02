@@ -143,3 +143,10 @@ Accumulated physical knowledge from operating in the world.
 - Frozen /frame endpoint: CV pipeline runs fine (8fps, face tracking works) but JPEG serving returns stale cached frame. Persisted across 7 consecutive ticks (271-277) and again ticks 321-328. Root cause: USB autosuspend.
 - DETECTION: When frame byte counts are identical across captures, check MD5 immediately. Do NOT trust frames without verifying checksums when multiple frames return the same size. Camera freeze invalidates all interpretations built on stale frames — audit how far back the freeze extends.
 - Second freeze (2026-03-30): produced 7+ ticks of false "under furniture" narrative. Frame_id incremented (242636) while /frame served stale 22KB JPEG. Same fix worked: USB unbind/rebind + bridge restart.
+
+## Cable Direction Discovery (2026-04-01)
+
+- **RIGHT turns avoid cable catches. LEFT turns cause them.** Cable geometry is directional — left turns route slack into right wheel path, right turns pull it away. Discovered tick 395 after 3 consecutive left-loop cable catches (ticks 392-394).
+- Right turn 800ms at L=1.04 R=-1.04 produces ~40deg. R wheel delayed ~200ms more than L (cable drag during clockwise rotation).
+- Forward after right turn: 7.85cm at 1000ms (vs 9.25cm cold start). Cable tension absorbs some energy but does not lock.
+- **Preferred pacing pattern at cable limit: forward → RIGHT turn → forward.** Avoids the cable catch that forward → LEFT turn → forward consistently triggers.
