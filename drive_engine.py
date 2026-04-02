@@ -53,7 +53,8 @@ DRIVE_CONFIG = {
     },
     "frustration": {
         "charge_per_failure": 0.15, # per stuck event, camera freeze, failed drive
-        "decay_rate": 0.002,        # slow decay
+        "decay_rate": 0.002,        # slow decay when source still active
+        "recovery_rate": 0.01,      # fast decay when source is resolved
         "threshold": 0.7,
         "description": "Something is broken. Fix it. Overcome it.",
     },
@@ -183,35 +184,48 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
         drives["expression"] = clamp01(
             drives["expression"] + DRIVE_CONFIG["expression"]["charge_rate"] * eff_elapsed)
 
-    # --- Frustration: charges on failures ---
-    # Track whether an ongoing frustration source is active this update.
-    # If so, suppress decay — frustration should accumulate while the problem persists.
-    ongoing_frustration = False
+    # --- Frustration: charges on failures, tracks source ---
+    # Track what is causing frustration so we can relieve it proportionally
+    # when the source clears.
+    frustration_sources = set()
     if sense:
         if sense.get("stuck", False):
             drives["frustration"] = clamp01(
                 drives["frustration"] + DRIVE_CONFIG["frustration"]["charge_per_failure"])
+            frustration_sources.add("stuck")
         # Camera explicitly dead — most reliable indicator
         if sense.get("camera_ok") is False:
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.1 * (eff_elapsed / 300))
-            ongoing_frustration = True
+            frustration_sources.add("camera_dead")
         # Camera freeze detection (fps < 1 means frozen or dead)
         elif sense.get("faces", 0) == 0 and sense.get("gimbal_mode") == "instinct":
             # Instinct thinks there's a target but no faces — phantom/frozen
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.05)
-            ongoing_frustration = True
+            frustration_sources.add("phantom_face")
         # Dead camera fallback: empty presence means YOLO sees nothing for 30s+.
-        elif not sense.get("presence", {}) and eff_elapsed > 60:
+        # Only if camera_ok is not explicitly True — otherwise just an empty room.
+        elif sense.get("camera_ok") is not True and not sense.get("presence", {}) and eff_elapsed > 60:
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.15 * (eff_elapsed / 300))
-            ongoing_frustration = True
-    # Only decay frustration when no ongoing source is active.
-    # Otherwise the decay (0.002 * 300 = 0.6) overwhelms any charge.
-    if not ongoing_frustration:
+            frustration_sources.add("no_detections")
+
+    # Track frustration sources and how long they've been active
+    prev_sources = set(state.get("_frustration_sources", []))
+    if frustration_sources:
+        state["_frustration_sources"] = list(frustration_sources)
+        if not prev_sources:
+            state["_frustration_onset"] = time.time()
+    else:
+        # No active sources — use fast recovery rate instead of slow decay.
+        # The longer frustration was active, the more satisfying the relief.
+        recovery_rate = DRIVE_CONFIG["frustration"]["recovery_rate"]
         drives["frustration"] = clamp01(
-            drives["frustration"] - DRIVE_CONFIG["frustration"]["decay_rate"] * eff_elapsed)
+            drives["frustration"] - recovery_rate * eff_elapsed)
+        if drives["frustration"] == 0:
+            state.pop("_frustration_sources", None)
+            state.pop("_frustration_onset", None)
 
     state["drives"] = drives
     return state
@@ -230,6 +244,21 @@ def relieve_drive(state: dict, drive_name: str, amount: float = 0.3) -> dict:
     elif drive_name == "expression":
         drives["expression"] = clamp01(
             drives.get("expression", 0) - DRIVE_CONFIG["expression"]["decay_on_express"])
+    elif drive_name == "frustration":
+        # Relief scales with how long the frustration source was active.
+        # Short frustration (< 5min): standard 0.3 drop.
+        # Long frustration (hours): full reset — the relief of finally fixing it.
+        onset = state.get("_frustration_onset")
+        if onset:
+            duration_h = (time.time() - onset) / 3600
+            # Scale from 0.3 (just started) to 1.0 (persisted 1h+)
+            relief = min(1.0, 0.3 + 0.7 * min(duration_h, 1.0))
+        else:
+            relief = amount
+        drives["frustration"] = clamp01(drives.get("frustration", 0) - relief)
+        if drives["frustration"] == 0:
+            state.pop("_frustration_sources", None)
+            state.pop("_frustration_onset", None)
     elif drive_name in drives:
         drives[drive_name] = clamp01(drives[drive_name] - amount)
     state["drives"] = drives
