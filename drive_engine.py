@@ -191,17 +191,19 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
         if sense.get("stuck", False):
             drives["frustration"] = clamp01(
                 drives["frustration"] + DRIVE_CONFIG["frustration"]["charge_per_failure"])
+        # Camera explicitly dead — most reliable indicator
+        if sense.get("camera_ok") is False:
+            drives["frustration"] = clamp01(
+                drives["frustration"] + 0.1 * (eff_elapsed / 300))
+            ongoing_frustration = True
         # Camera freeze detection (fps < 1 means frozen or dead)
-        if sense.get("faces", 0) == 0 and sense.get("gimbal_mode") == "instinct":
+        elif sense.get("faces", 0) == 0 and sense.get("gimbal_mode") == "instinct":
             # Instinct thinks there's a target but no faces — phantom/frozen
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.05)
             ongoing_frustration = True
-        # Dead camera: empty presence means YOLO sees nothing for 30s+.
-        # A working camera in a furnished room always detects something.
-        # Empty presence over elapsed time = camera problem = frustration.
-        presence = sense.get("presence", {})
-        if not presence and eff_elapsed > 60:
+        # Dead camera fallback: empty presence means YOLO sees nothing for 30s+.
+        elif not sense.get("presence", {}) and eff_elapsed > 60:
             drives["frustration"] = clamp01(
                 drives["frustration"] + 0.15 * (eff_elapsed / 300))
             ongoing_frustration = True
