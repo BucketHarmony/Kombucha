@@ -152,3 +152,10 @@ Accumulated physical knowledge from operating in the world.
 - **Preferred pacing pattern at cable limit: forward → RIGHT turn → forward.** Avoids the cable catch that forward → LEFT turn → forward consistently triggers.
 - **Cable-direction rule does NOT apply to reverse.** Reverse driving can catch the right wheel regardless of turn direction. Cable catches are positional (where slack pools relative to axle), not directional. First reverse at 1200ms was clean (ratio 0.96), second reverse caught (ratio 2.0) — position changed between the two. Discovered tick 398.
 - Reverse at 80% (L=-1.04 R=-1.08): 9.7cm in 1200ms when clean. Ratio 0.96 — more symmetric than forward (consistent with earlier findings). Startup lag ~600ms in reverse.
+
+## Tether Hard Stop Discovery (2026-04-02)
+
+- **Tether hard stop is qualitatively different from cable catch.** Hard stop: symmetric (both wheels stop simultaneously), elastic bounce-back (brief negative speeds ~0.2-0.5s), then complete zero. Cable catch: asymmetric (one wheel degrades while other continues).
+- Two 5000ms drives in different directions (forward and 45-degrees-right) produced identical results: 33cm travel, hard stop at t=3.5s, bounce-back, silence. Rover is at tether limit with ~33cm of slack in all tested forward directions.
+- Requesting drives longer than available cable slack wastes duration — rover simply stops and idles. Shorter drives (1200ms) are more efficient at cable limit than maximum-length drives.
+- Ground speed at 80% power: ~11cm/s effective (33cm in 3.0s of actual wheel time). Significantly slower than wheel speed (~1.0 m/s) suggests — either wheel slip or encoder calibration discrepancy.

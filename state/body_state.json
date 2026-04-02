@@ -1,19 +1,19 @@
 {
-  "last_tick": 398,
-  "wake_count": 254,
-  "last_invocation": "2026-04-02T00:01:05-04:00",
+  "last_tick": 399,
+  "wake_count": 255,
+  "last_invocation": "2026-04-02T01:00:48-04:00",
   "last_mode": "heartbeat",
   "last_mood": "restless",
-  "last_drive_time": 1743566465.0,
+  "last_drive_time": 1743570048.0,
   "drives": {
-    "wanderlust": 0.0,
+    "wanderlust": 0.5,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.11,
+    "builder": 0.24,
     "expression": 0.0,
-    "frustration": 0.55
+    "frustration": 0.70
   },
-  "_last_known_distance": 33.045,
+  "_last_known_distance": 33.71,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 393,
@@ -21,5 +21,7 @@
   "_right_turns_avoid_cable": true,
   "_cable_direction_confirmed": true,
   "_cable_catches_in_reverse": true,
-  "_ssh_failing": true
+  "_ssh_failing": true,
+  "_tether_hard_stop_confirmed": true,
+  "_tether_slack_cm": 33
 }
