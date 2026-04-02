@@ -24,7 +24,7 @@ from hardware import (
     CAPTURE_W, CAPTURE_H,
     CV_QUEUE_MAX_DEPTH, CV_QUEUE_STALE_S, CV_DEAD_ZONE_PX,
     CV_KP_PAN, CV_KP_TILT, CV_MAX_STEP_DEG, CV_SMOOTHING,
-    CV_HYSTERESIS_S, CV_MANUAL_TIMEOUT_S,
+    CV_HYSTERESIS_S, CV_MANUAL_TIMEOUT_S, CV_MOTION_SUPPRESS_S,
     HEARTBEAT_INTERVAL_S, JPEG_QUALITY,
 )
 
@@ -224,9 +224,16 @@ class GimbalArbiter:
 
     def _play_servo_sound(self, pan_from, pan_to, tilt_from, tilt_to, purpose="track"):
         """Play a gimbal movement sound and suppress motion detection."""
-        # Suppress motion so gimbal movement doesn't trigger self-flinch
+        # Suppress motion so gimbal movement doesn't trigger self-flinch.
+        # Scale duration with movement size: large pans shift the entire frame,
+        # and MOG2 needs multiple frames to re-learn the new background.
         if self._cv_pipeline and hasattr(self._cv_pipeline, 'suppress_motion'):
-            self._cv_pipeline.suppress_motion(1.0)
+            pan_delta = abs(pan_to - pan_from)
+            tilt_delta = abs(tilt_to - tilt_from)
+            move_deg = max(pan_delta, tilt_delta)
+            # Base 2.0s (CV_MOTION_SUPPRESS_S default), +1s per 90 degrees
+            suppress_s = CV_MOTION_SUPPRESS_S + (move_deg / 90.0)
+            self._cv_pipeline.suppress_motion(suppress_s)
         def _do():
             try:
                 from audio_harmony import render_servo_sound
