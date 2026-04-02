@@ -150,3 +150,5 @@ Accumulated physical knowledge from operating in the world.
 - Right turn 800ms at L=1.04 R=-1.04 produces ~40deg. R wheel delayed ~200ms more than L (cable drag during clockwise rotation).
 - Forward after right turn: 7.85cm at 1000ms (vs 9.25cm cold start). Cable tension absorbs some energy but does not lock.
 - **Preferred pacing pattern at cable limit: forward → RIGHT turn → forward.** Avoids the cable catch that forward → LEFT turn → forward consistently triggers.
+- **Cable-direction rule does NOT apply to reverse.** Reverse driving can catch the right wheel regardless of turn direction. Cable catches are positional (where slack pools relative to axle), not directional. First reverse at 1200ms was clean (ratio 0.96), second reverse caught (ratio 2.0) — position changed between the two. Discovered tick 398.
+- Reverse at 80% (L=-1.04 R=-1.08): 9.7cm in 1200ms when clean. Ratio 0.96 — more symmetric than forward (consistent with earlier findings). Startup lag ~600ms in reverse.
