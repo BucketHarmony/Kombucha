@@ -78,7 +78,7 @@ state = {
     'wake_count': 0,
     'last_invocation': '$(date -Iseconds)',
     'last_mode': '$MODE',
-    'drives': {'wanderlust': 0, 'curiosity': 0, 'social': 0, 'cringe': 0, 'attachment': 0}
+    'drives': {'wanderlust': 0, 'curiosity': 0, 'social': 0, 'builder': 0, 'expression': 0, 'frustration': 0}
 }
 with open('$STATE_FILE', 'w') as f:
     json.dump(state, f, indent=2)
