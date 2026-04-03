@@ -1,12 +1,11 @@
 {
-  "experiment": "dead_zone_reduction",
-  "hypothesis": "Reducing dead_zone_px from 30 to 15 will make face tracking smoother — gimbal corrects earlier when target drifts from center",
-  "started": "2026-03-28",
-  "baseline": {
-    "dead_zone_px": 30,
-    "ticks_needed": 3,
-    "ticks_collected": 0
-  },
-  "measurements": [],
-  "conclusion": "ABANDONED — 2026-04-01 dream session. Camera has been frozen or disconnected for 13 of 26 ticks today, making tracking quality unmeasurable. Cannot collect baseline data when the camera barely works. Will revisit when USB stability is resolved. The camera physically disconnected at tick 372 (27m session distance, likely cable strain on USB connector) and has not recovered. Fixing camera reliability is prerequisite to any perception experiment."
+  "experiment": null,
+  "note": "No active experiment. dead_zone_reduction abandoned 2026-04-01 (camera dead). Next experiment: when camera returns, test tracking smoothness with dead_zone_px=15 vs 30.",
+  "proposed_next": {
+    "name": "dead_zone_reduction_v2",
+    "hypothesis": "Reducing dead_zone_px from 30 to 15 will make face tracking smoother",
+    "prerequisite": "Working camera (USB cable replaced)",
+    "baseline_ticks": 5,
+    "measure_ticks": 5
+  }
 }

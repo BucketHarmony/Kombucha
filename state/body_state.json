@@ -1,15 +1,15 @@
 {
-  "last_tick": 421,
-  "wake_count": 279,
-  "last_invocation": "2026-04-03T01:00:34-04:00",
-  "last_mode": "heartbeat",
-  "last_mood": "settled",
+  "last_tick": 422,
+  "wake_count": 280,
+  "last_invocation": "2026-04-03T02:00:01-04:00",
+  "last_mode": "dream",
+  "last_mood": "dreaming",
   "last_drive_time": 1775196034.0,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.24,
+    "builder": 0.3640413979772064,
     "expression": 0.0,
     "frustration": 0.0
   },

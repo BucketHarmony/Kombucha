@@ -39,12 +39,16 @@ except Exception:
     AUDIO_DEVICE = "plughw:3,0"
 
 
+_wav_counter = 0
+
 def _play_wav_samples(samples, volume=0.5):
     """Write float samples to a temp WAV and play via aplay. Non-blocking."""
     if not samples:
         return
     import struct as _s, wave as _w, subprocess as _sp
-    tmp = '/tmp/kombucha_gimbal_audio.wav'
+    global _wav_counter
+    _wav_counter = (_wav_counter + 1) % 8
+    tmp = f'/tmp/kombucha_gimbal_audio_{_wav_counter}.wav'
     try:
         clamped = [max(-1.0, min(1.0, s * volume)) for s in samples]
         int_s = [int(s * 32767) for s in clamped]
