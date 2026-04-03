@@ -290,16 +290,29 @@ class WakeRecorder:
 
     def disengage(self):
         """Called when instinct releases. Stops video, logs event."""
+        recording_thread = None
         with self._lock:
             if not self._active:
                 return
 
             self._recording = False
             self._active = False
+            recording_thread = self._recording_thread
 
+        # Join recording thread BEFORE cleaning up its resources.
+        # The thread checks self._recording each iteration, so it will
+        # exit promptly.  We must join outside the lock to avoid deadlock
+        # if the thread ever needs the lock (it doesn't today, but this
+        # is defensive).
+        if recording_thread:
+            recording_thread.join(timeout=2.0)
+
+        with self._lock:
             if self._frame_queue and self._frame_dist:
                 self._frame_dist.unsubscribe(self._frame_queue)
                 self._frame_queue = None
+
+            self._recording_thread = None
 
             duration = time.time() - self._wake_start if self._wake_start else 0
 
@@ -331,8 +344,11 @@ class WakeRecorder:
         last_capture = 0.0
         capture_interval = 0.5
         while self._recording:
+            fq = self._frame_queue
+            if fq is None:
+                break
             try:
-                frame, frame_id = self._frame_queue.get(timeout=0.1)
+                frame, frame_id = fq.get(timeout=0.1)
             except queue.Empty:
                 continue
             now = time.time()
