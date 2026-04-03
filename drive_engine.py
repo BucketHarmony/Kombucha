@@ -221,9 +221,12 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
         # Frustration should not permanently peg at 1.0 — working on the
         # problem (committing code, making progress) should let it drift
         # down, even if the root cause (e.g. dead camera) persists.
+        # Cap decay per update at 0.05 to prevent overwhelming the charge
+        # rate on hourly heartbeats (0.002 * 300s = 0.6 was wiping it out).
         decay_rate = DRIVE_CONFIG["frustration"]["decay_rate"]
+        decay_amount = min(0.05, decay_rate * eff_elapsed)
         drives["frustration"] = clamp01(
-            drives["frustration"] - decay_rate * eff_elapsed)
+            drives["frustration"] - decay_amount)
     else:
         # No active sources — use fast recovery rate instead of slow decay.
         # Use raw elapsed_s (not capped eff_elapsed) so recovery works across
