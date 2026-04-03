@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -126,6 +127,9 @@ class TelemetryState:
             self.gx = float(data.get("gx", self.gx))
             self.gy = float(data.get("gy", self.gy))
             self.gz = float(data.get("gz", self.gz))
+            self.mx = float(data.get("mx", self.mx))
+            self.my = float(data.get("my", self.my))
+            self.mz = float(data.get("mz", self.mz))
             if "v" in data:
                 self.battery_v = round(float(data["v"]) / 100, 2)
             if "pan" in data:
