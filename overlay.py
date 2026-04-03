@@ -111,25 +111,27 @@ class OverlayRenderer:
         # Read last audio event
         try:
             manifest = Path("/opt/kombucha/media/audio/manifest.jsonl")
-            if manifest.exists():
-                last_line = ""
+            if manifest.exists() and manifest.stat().st_size > 0:
                 with open(manifest, "rb") as f:
+                    # Read last 4KB (plenty for one JSON line)
                     f.seek(0, 2)
-                    pos = f.tell()
-                    while pos > 0:
-                        pos -= 1
-                        f.seek(pos)
-                        if f.read(1) == b"\n" and last_line:
-                            break
-                        f.seek(pos)
-                        last_line = f.read(1).decode() + last_line
-                if last_line.strip():
-                    entry = json.loads(last_line.strip())
+                    size = f.tell()
+                    f.seek(max(0, size - 4096))
+                    chunk = f.read()
+                lines = chunk.split(b"\n")
+                # Find last non-empty line
+                last_line = ""
+                for line in reversed(lines):
+                    line = line.strip()
+                    if line:
+                        last_line = line.decode()
+                        break
+                if last_line:
+                    entry = json.loads(last_line)
                     self._last_audio_label = entry.get("label", "")
                     ts = entry.get("timestamp", "")
                     if ts:
-                        from datetime import datetime as dt
-                        t = dt.fromisoformat(ts)
+                        t = datetime.fromisoformat(ts)
                         self._last_audio_time = t.timestamp()
         except Exception:
             pass
