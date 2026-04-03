@@ -585,9 +585,10 @@ class GimbalArbiter:
                             cmd = validate_tcode(133, {
                                 "X": pan_est, "Y": 0, "SPD": 120, "ACC": 25})
                             if cmd:
+                                old_pan = self._cmd_pan
                                 self._send(cmd)
                                 self._cmd_pan = float(pan_est)
-                                self._play_servo_sound(self._cmd_pan, pan_est, 0, 0, "snap")
+                                self._play_servo_sound(old_pan, pan_est, self._cmd_tilt, 0, "snap")
                             self._last_investigate_time = now_react
                             log.info(f"Auto-investigate: {obj_name} at pan={pan_est}")
                             break
