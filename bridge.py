@@ -1260,43 +1260,6 @@ def get_unknown_face(filename: str):
 
 
 # -----------------------------------------------------------------------------
-# Audio Monitor + Sonar + Timelapse Endpoints
-# -----------------------------------------------------------------------------
-
-@app.get("/audio/monitor")
-def get_audio_monitor():
-    try:
-        return audio_monitor.get_status()
-    except Exception:
-        return {"error": "monitor not running"}
-
-@app.get("/sonar")
-def get_sonar():
-    try:
-        return sonar.get_status()
-    except Exception:
-        return {"error": "sonar not running"}
-
-@app.get("/timelapse/status")
-def get_timelapse_status():
-    try:
-        return timelapse.get_status()
-    except Exception:
-        return {"error": "timelapse not running"}
-
-@app.get("/timelapse/frame")
-def get_timelapse_frame():
-    try:
-        ret, frame = timelapse.get_latest_frame()
-        if ret and frame is not None:
-            _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            return Response(content=buf.tobytes(), media_type="image/jpeg")
-    except Exception:
-        pass
-    raise HTTPException(status_code=503, detail="No timelapse frame")
-
-
-# -----------------------------------------------------------------------------
 # Log Tail Endpoints
 # -----------------------------------------------------------------------------
 
@@ -1463,7 +1426,7 @@ def startup():
     global camera, serial_port, video_recorder, telemetry_state
     global telemetry_reader, frame_distributor, cv_state, cv_pipeline
     global gimbal_arbiter, wake_recorder, heartbeat, detection_logger
-    global tone_player, audio_listener
+    global tone_player, audio_listener, _camera_watchdog
 
     log.info("Kombucha Body starting up...")
 
