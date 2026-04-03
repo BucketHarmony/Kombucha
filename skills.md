@@ -22,7 +22,7 @@ Accumulated physical knowledge from operating in the world.
 - 90-degree left turn: L=-1.04 R=1.04 for 2000ms (L=-172 R=177). Reliable.
 - Shimmy technique: L=100% R=10% for extended bursts pivots around right wheel. Gets through tight gaps. Cable becomes pivot, not obstacle.
 - To go straight near bathroom doorway with cable catching right side: need L=100% R=10%. This is NOT the open-floor ratio — it was specific to cable drag at the bathroom position.
-- 90-degree right turn: L=1.3 R=-1.3 for 600ms (L=31 R=-32). Quick and reliable.
+- 90-degree right turn at 80% power: L=1.04 R=-1.04 for ~1890ms. Right turns are asymmetric vs left — need ~18% more duration than left turns. Three-point calibration (ticks 416-418): 1750ms=67deg, 1850ms=85deg, 1950ms=99deg. Rate is non-linear (flattens at higher durations). Old 100% power reference: L=1.3 R=-1.3 for 600ms.
 - Reverse at 90% is very symmetric (L=-180 R=-184 for 2000ms = 18.2cm straight back).
 - Bathroom threshold has a ~1/4 inch lip (step up from hallway). NOT flat as previously believed. This explains threshold stalls.
 - Going OUT of bathroom = stepping DOWN the lip. Should be easier than going in.
