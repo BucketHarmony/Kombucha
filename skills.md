@@ -119,7 +119,7 @@ Accumulated physical knowledge from operating in the world.
 - In-place turn rate: ~36 degrees per 1000ms at L=1.04 R=-1.04 on hardwood (measured 25deg in 700ms).
 - At 24.96m session distance, cable can completely lock right wheel (R odom=0, L runs free at ~1.0 m/s). Causes uncontrolled counterclockwise pivot.
 - 400ms drives at 100% power produce near-zero movement — all startup lag. Minimum effective turn at 100%: 600ms.
-- **Right turns are ~23% slower than left turns at same duration.** 1550ms left = ~87deg, 1550ms right = ~67deg. For 90-degree right turn, use ~1850-1900ms. Asymmetry is mechanical (cable routing, floor friction differential), not a calibration error.
+- **Right turns are ~23% slower than left turns at same duration.** 1550ms left = ~87deg, 1550ms right = ~67deg, 1850ms right = ~85deg. For 90-degree right turn, use ~1950ms. Asymmetry is mechanical (cable routing, floor friction differential), not a calibration error.
 - 3000ms forward at 80% produces 31.25cm (longest clean drive). ~12cm/1000ms effective after startup lag — consistent across all durations.
 
 ## Audio System (2026-03-28)
