@@ -307,10 +307,8 @@ class OverlayRenderer:
         bar_w = 8
         bar_max_h = 50
         y_start = 32
-        gap = 16
+        gap = 12  # was 16 — 6 active drives need tighter spacing to fit panel
         for i, (name, level) in enumerate(self._drives.items()):
-            if name == "attachment":
-                continue
             bx = panel_x + i * gap
             color = DRIVE_COLORS.get(name, C_DIM)
             bh = int(level * bar_max_h)
