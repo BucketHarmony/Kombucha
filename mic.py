@@ -36,6 +36,11 @@ IMPULSE_THRESHOLD = 0.15  # sudden spike above this = impulse event
 SUSTAINED_THRESHOLD = 0.03  # above this for >1s = sustained sound
 SUSTAINED_DURATION_S = 1.0
 
+# Adaptive noise floor
+NOISE_FLOOR_ALPHA = 0.01  # EMA smoothing — slow adaptation to ambient level
+NOISE_SHIFT_RATIO = 3.0  # current RMS must be Nx noise floor to trigger event
+NOISE_SHIFT_CHUNKS = 5  # must exceed ratio for this many consecutive chunks (500ms)
+
 # How many chunks to keep for rolling average
 HISTORY_SIZE = 30  # 3 seconds at 100ms chunks
 
@@ -83,6 +88,11 @@ class AudioListener(threading.Thread):
 
         # Suppress self-sound: when tone_player is active, ignore audio
         self._suppress_until = 0.0
+
+        # Adaptive noise floor
+        self._noise_floor = 0.002  # initial estimate (typical quiet room)
+        self._above_noise_since = 0  # consecutive chunks above noise_shift ratio
+        self._last_noise_shift_t = 0.0  # debounce noise_shift events
 
         # Raw audio buffer for clip saving (last 10 seconds)
         self._raw_buffer = deque(maxlen=int(10.0 / (CHUNK_MS / 1000)))
@@ -154,8 +164,26 @@ class AudioListener(threading.Thread):
             self._silence = silence
             self._rms_history.append(rms)
 
+        # Update adaptive noise floor (always, even when suppressed)
+        self._noise_floor = (NOISE_FLOOR_ALPHA * rms +
+                             (1 - NOISE_FLOOR_ALPHA) * self._noise_floor)
+
         if suppressed:
             return
+
+        # Noise shift detection: room got louder relative to floor
+        threshold = self._noise_floor * NOISE_SHIFT_RATIO
+        if rms > threshold and self._noise_floor > 0.0005:
+            self._above_noise_since += 1
+            if (self._above_noise_since >= NOISE_SHIFT_CHUNKS and
+                    (now - self._last_noise_shift_t) > 5.0):
+                self._last_noise_shift_t = now
+                event = AudioEvent("noise_shift", peak, rms)
+                with self._lock:
+                    self._events.append(event)
+                logger.info(f"Audio noise_shift: rms={rms:.4f} floor={self._noise_floor:.4f} ratio={rms/self._noise_floor:.1f}x")
+        else:
+            self._above_noise_since = 0
 
         # Impulse detection: sudden spike
         if peak > IMPULSE_THRESHOLD and (now - self._last_impulse_t) > 0.5:
@@ -220,6 +248,7 @@ class AudioListener(threading.Thread):
                 "rms": round(self._rms, 4),
                 "peak": round(self._peak, 4),
                 "avg_rms": round(avg_rms, 4),
+                "noise_floor": round(self._noise_floor, 4),
                 "silence": self._silence,
                 "events": recent_events[-5:],  # last 5 events within 30s
             }
