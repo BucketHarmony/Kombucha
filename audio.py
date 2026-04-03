@@ -121,6 +121,22 @@ MOOD_SEQUENCES = {
         {"type": "chirp", "start": 800, "end": 1400, "ms": 80},
         {"type": "beep", "freq": 1000, "ms": 60},
     ],
+    "restless": [
+        {"type": "chirp", "start": 700, "end": 1100, "ms": 40},
+        {"type": "silence", "ms": 20},
+        {"type": "chirp", "start": 900, "end": 500, "ms": 50},
+        {"type": "chirp", "start": 600, "end": 1000, "ms": 35},
+        {"type": "silence", "ms": 30},
+        {"type": "chirp", "start": 1100, "end": 700, "ms": 45},
+        {"type": "beep", "freq": 800, "ms": 30},
+    ],
+    "blind": [
+        {"type": "beep", "freq": 250, "ms": 300},
+        {"type": "chirp", "start": 250, "end": 180, "ms": 400},
+        {"type": "silence", "ms": 100},
+        {"type": "warble", "freq": 200, "vibrato_hz": 2, "vibrato_depth": 30, "ms": 500},
+        {"type": "chirp", "start": 200, "end": 150, "ms": 300},
+    ],
 }
 
 
