@@ -18,9 +18,11 @@ The Kombucha Tonal Language:
 """
 
 import math
+import os
 import random
 import struct
 import subprocess
+import tempfile
 import wave
 import logging
 import threading
@@ -772,7 +774,6 @@ class HarmonicPlayer:
 
             samples = _concat(*phrase_parts)
             # Write and play inline (blocking for phrase duration)
-            import tempfile
             with tempfile.NamedTemporaryFile(suffix='.wav', delete=False, dir='/tmp') as f:
                 tmp = f.name
             self._samples_to_wav(samples, tmp)
@@ -787,6 +788,3 @@ class HarmonicPlayer:
 
             iteration += 1
             time.sleep(0.05)  # Tiny gap between phrases
-
-
-import os  # needed for unlink in self_talk
