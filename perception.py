@@ -65,6 +65,9 @@ class FrameDistributor(threading.Thread):
         # No fresh frame — camera is likely frozen. Auto-reset and retry.
         log.warning(f"No fresh frame in {timeout_s}s (frame_id stuck at {old_id}). Auto-resetting camera.")
         if self.reset_camera():
+            # reset_camera sets _frame_id to 0, so use that as new baseline
+            with self._lock:
+                old_id = self._frame_id
             # Wait for a fresh frame after reset
             retry_deadline = time.time() + 3.0
             while time.time() < retry_deadline:
