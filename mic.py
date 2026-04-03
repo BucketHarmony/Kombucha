@@ -19,7 +19,9 @@ import struct
 import subprocess
 import threading
 import time
+import wave
 from collections import deque
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +84,11 @@ class AudioListener(threading.Thread):
         # Suppress self-sound: when tone_player is active, ignore audio
         self._suppress_until = 0.0
 
+        # Raw audio buffer for clip saving (last 10 seconds)
+        self._raw_buffer = deque(maxlen=int(10.0 / (CHUNK_MS / 1000)))
+        self._clip_dir = Path("/opt/kombucha/media/audio/ticks")
+        self._clip_dir.mkdir(parents=True, exist_ok=True)
+
     def suppress(self, duration_s=1.0):
         """Suppress audio detection for duration_s (e.g., while playing tones)."""
         self._suppress_until = time.time() + duration_s
@@ -117,6 +124,8 @@ class AudioListener(threading.Thread):
                 if not data or len(data) < CHUNK_BYTES:
                     break
                 self._process_chunk(data)
+                with self._lock:
+                    self._raw_buffer.append(data)
         finally:
             proc.terminate()
             try:
@@ -174,6 +183,31 @@ class AudioListener(threading.Thread):
                         self._events.append(event)
         else:
             self._above_sustained_since = None
+
+    def save_clip(self, filename, duration_s=5.0):
+        """Save the last duration_s seconds of buffered audio as a WAV file.
+
+        Returns the path to the saved file, or None if no audio buffered.
+        """
+        chunks_needed = int(duration_s / (CHUNK_MS / 1000))
+        with self._lock:
+            if not self._raw_buffer:
+                return None
+            chunks = list(self._raw_buffer)[-chunks_needed:]
+
+        raw_data = b"".join(chunks)
+        if len(raw_data) < CHUNK_BYTES:
+            return None
+
+        path = self._clip_dir / filename
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(raw_data)
+
+        logger.info(f"Saved audio clip: {path} ({len(raw_data)} bytes, {len(chunks)} chunks)")
+        return str(path)
 
     def snapshot(self):
         """Return current audio state as a dict."""

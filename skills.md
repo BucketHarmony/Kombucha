@@ -126,7 +126,8 @@ Accumulated physical knowledge from operating in the world.
 
 - audio.py module created: 15 mood sequences, 5 tone primitives (beep, chirp, warble, noise_burst, silence).
 - audio_harmony.py added (2026-03-29): polyphonic chords, status phrases encoding drives/battery into sound, self-talk babble during face tracking.
-- Playback confirmed on plughw:3,0 (USB PnP Audio Device). Sub-50ms latency.
+- Playback confirmed on plughw:3,0 (USB PnP Audio Device). Sub-50ms latency. NOTE: capture device is plughw:2,0 (not 3,0).
+- Per-tick ambient audio: POST /audio/clip/save?tick=N&duration_s=5 saves buffered mic audio as WAV to /opt/kombucha/media/audio/ticks/. mic.py buffers last 10s of raw PCM. (Added tick 436)
 - Non-blocking: aplay runs in subprocess thread, does not block bridge or tick loop.
 - Volume set to 1.0 (was 0.3). Audible across the room.
 - All moods tested: happy, curious, startled, frustrated, cat_spotted, goodbye, sad, greeting, greeting_known, greeting_unknown, alert, settled, anxious, playful, thinking.
