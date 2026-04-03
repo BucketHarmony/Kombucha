@@ -168,15 +168,24 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
     hours_stale = secs_since_commit / 3600
     drives["builder"] = clamp01(hours_stale / 8.0)
 
-    # --- Expression: charges when there are unmatched moods ---
-    # Check if mood_gestures.json is missing entries for recent moods
+    # --- Expression: charges when recent moods have no matching gestures ---
+    # Track a rolling window of the last 5 moods. If many are unmatched
+    # in mood_gestures.json, expression pressure builds across ticks —
+    # not just from the single most recent mood.
     try:
         gestures = json.loads(Path("/opt/kombucha/mood_gestures.json").read_text())
         mood = state.get("last_mood", "")
-        if mood and mood not in gestures:
-            # Mood exists but no gesture for it — expression pressure builds
-            drives["expression"] = clamp01(
-                drives["expression"] + 0.1)
+        recent_moods = list(state.get("_recent_moods", []))
+        if mood and (not recent_moods or recent_moods[-1] != mood):
+            recent_moods.append(mood)
+            recent_moods = recent_moods[-5:]  # keep last 5
+            state["_recent_moods"] = recent_moods
+        # Count how many of the recent moods are unmatched
+        unmatched = sum(1 for m in recent_moods if m and m not in gestures)
+        if unmatched > 0 and len(recent_moods) > 0:
+            # Charge proportionally: 1/5 unmatched = +0.06, 5/5 = +0.30
+            charge = 0.06 * unmatched
+            drives["expression"] = clamp01(drives["expression"] + charge)
         else:
             drives["expression"] = clamp01(
                 drives["expression"] - 0.003 * eff_elapsed)
