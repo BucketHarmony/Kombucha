@@ -1224,6 +1224,21 @@ def get_audio_events(n: int = 30):
     return results
 
 
+
+@app.post('/audio/clip/save')
+def save_audio_clip(tick: int = 0, duration_s: float = 5.0):
+    """Save recent buffered audio as a WAV clip for the given tick."""
+    if audio_listener is None:
+        raise HTTPException(status_code=503, detail='Audio listener not initialized')
+    if not hasattr(audio_listener, 'save_clip'):
+        raise HTTPException(status_code=501, detail='AudioListener needs save_clip — restart bridge after deploying updated mic.py')
+    filename = f'tick_{tick:04d}_ambient.wav'
+    path = audio_listener.save_clip(filename, duration_s=min(duration_s, 10.0))
+    if path is None:
+        raise HTTPException(status_code=404, detail='No audio buffered')
+    return {'result': 'ok', 'path': path, 'tick': tick}
+
+
 @app.get("/audio/file/{filename}")
 def get_audio_file(filename: str):
     """Serve a specific audio WAV file."""
