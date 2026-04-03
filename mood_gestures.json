@@ -1,6 +1,14 @@
 {
   "_doc": "Mood gesture sequences. Each gesture is an array of steps. Step format: [type, ...params, delay_ms]. Types: look(pan,tilt,speed,accel,delay), light(base,head,delay), drive(left,right,duration_ms,delay), sound(mood,delay), wait(delay).",
 
+  "determined": [
+    ["sound", "settled", 50],
+    ["look", 0, -10, 80, 15, 200],
+    ["look", 0, 5, 60, 12, 300],
+    ["look", 0, 0, 40, 10, 200],
+    ["light", 0, 180, 400],
+    ["light", 0, 0, 100]
+  ],
   "settled": [
     ["sound", "settled", 100],
     ["look", 0, 8, 30, 8, 400],

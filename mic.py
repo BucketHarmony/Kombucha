@@ -226,3 +226,56 @@ class AudioListener(threading.Thread):
 
     def stop(self):
         self._stop_event.set()
+
+
+def analyze_clip(path):
+    """Analyze a saved WAV clip. Returns stats dict with peak, mean_rms, max_rms, duration_s.
+
+    Computes RMS across 100ms windows to find loudest moment and overall level.
+    """
+    path = str(path)
+    with wave.open(path, "rb") as wf:
+        n_channels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        framerate = wf.getframerate()
+        n_frames = wf.getnframes()
+        raw = wf.readframes(n_frames)
+
+    if sampwidth != 2 or n_channels != 1:
+        return {"error": f"unsupported format: {n_channels}ch {sampwidth*8}bit"}
+
+    n_samples = len(raw) // 2
+    if n_samples == 0:
+        return {"error": "empty clip"}
+
+    samples = struct.unpack(f'<{n_samples}h', raw)
+    duration_s = n_samples / framerate
+
+    # Global peak
+    peak = max(abs(s) for s in samples) / 32768.0
+
+    # Global mean RMS
+    sum_sq = sum(s * s for s in samples) / (32768.0 * 32768.0)
+    mean_rms = math.sqrt(sum_sq / n_samples)
+
+    # Windowed RMS (100ms windows)
+    window_samples = framerate // 10  # 100ms
+    max_rms = 0.0
+    rms_windows = []
+    for i in range(0, n_samples, window_samples):
+        chunk = samples[i:i + window_samples]
+        if len(chunk) < window_samples // 2:
+            break
+        w_sq = sum(s * s for s in chunk) / (32768.0 * 32768.0)
+        w_rms = math.sqrt(w_sq / len(chunk))
+        rms_windows.append(w_rms)
+        if w_rms > max_rms:
+            max_rms = w_rms
+
+    return {
+        "duration_s": round(duration_s, 2),
+        "peak": round(peak, 4),
+        "mean_rms": round(mean_rms, 4),
+        "max_rms": round(max_rms, 4),
+        "n_windows": len(rms_windows),
+    }
