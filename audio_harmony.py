@@ -801,18 +801,18 @@ class HarmonicPlayer:
             # Vary the phrase each iteration
             phrase_parts = []
 
-            if iteration % 3 == 0:
+            if iteration % 4 == 0:
                 # Battery + wanderlust
                 phrase_parts.append(encode_battery(state.get('battery_pct', 50), 150))
                 phrase_parts.append(_silence(20))
                 phrase_parts.append(encode_wanderlust(state.get('wanderlust', 0), 200))
-            elif iteration % 3 == 1:
+            elif iteration % 4 == 1:
                 # Social + curiosity
                 phrase_parts.append(encode_social(
                     state.get('social', 0), state.get('has_face', False), 180))
                 phrase_parts.append(_silence(20))
                 phrase_parts.append(encode_curiosity(state.get('curiosity', 0), 150))
-            else:
+            elif iteration % 4 == 2:
                 # Distance + cat + mood chord
                 phrase_parts.append(encode_distance(state.get('distance_m', 0), 150))
                 phrase_parts.append(_silence(20))
@@ -821,6 +821,13 @@ class HarmonicPlayer:
                     phrase_parts.append(cat)
                 else:
                     phrase_parts.append(_render_chord(350, 'power', 100, 0.4))
+            else:
+                # Builder + expression + frustration
+                phrase_parts.append(encode_builder(state.get('builder', 0), 180))
+                phrase_parts.append(_silence(20))
+                phrase_parts.append(encode_expression(state.get('expression', 0), 150))
+                phrase_parts.append(_silence(20))
+                phrase_parts.append(encode_frustration(state.get('frustration', 0), 200))
 
             samples = _concat(*phrase_parts)
             # Write and play inline (blocking for phrase duration)
