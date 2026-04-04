@@ -252,11 +252,58 @@ def encode_cat_memory(seconds_since_cat, duration_ms=300):
     )
 
 
+def encode_builder(level, duration_ms=350):
+    """Builder drive as accelerating ascending phrase. Higher = faster, wider intervals."""
+    root = 300
+    if level > 0.6:
+        # Urgent: rapid ascending major 7th arpeggio — creative pressure
+        return _concat(
+            _render_chord(root, 'major', 50, volume=0.6),
+            _render_chord(root * 1.25, 'major', 45, volume=0.65),
+            _render_chord(root * 1.5, 'major7', 40, volume=0.7),
+            _render_chord(root * 2, 'bright', 70, volume=0.8),
+        )
+    elif level > 0.3:
+        return _concat(
+            _render_chord(root, 'sus4', 80, volume=0.5),
+            _render_chord(root * 1.33, 'major', 80, volume=0.55),
+        )
+    else:
+        return _render_chord(root, 'power', 120, volume=0.3)
+
+
+def encode_expression(level, duration_ms=300):
+    """Expression drive as searching melodic phrase. Unresolved when high."""
+    root = 450
+    if level > 0.6:
+        # Seeking: rising then falling — question without answer
+        return _concat(
+            _render_harmonic_chirp(root, root * 1.4, 'minor', 150, volume=0.65),
+            _render_harmonic_chirp(root * 1.4, root * 0.9, 'sus4', 150, volume=0.6),
+        )
+    elif level > 0.3:
+        return _render_harmonic_chirp(root, root * 1.2, 'sus4', duration_ms, volume=0.5)
+    else:
+        return _render_chord(root, 'major', 100, volume=0.3)
+
+
+def encode_frustration(level, duration_ms=400):
+    """Frustration as dissonant tension. Low=minor grumble, high=cluster chord."""
+    root = 250
+    if level > 0.7:
+        # Urgent: grinding cluster chord with fast tremolo
+        return _render_tremolo_chord(root, 'cluster', duration_ms, tremolo_hz=12, volume=0.8)
+    elif level > 0.4:
+        return _render_tremolo_chord(root, 'dim', int(duration_ms * 0.7), tremolo_hz=6, volume=0.6)
+    else:
+        return _render_chord(root, 'minor', int(duration_ms * 0.5), volume=0.4)
+
+
 def compose_status_phrase(state):
     """Compose a full status phrase from rover state dict.
 
-    state keys: battery_pct, wanderlust, social, curiosity, distance_m,
-                has_face, seconds_since_cat
+    state keys: battery_pct, wanderlust, social, curiosity, builder,
+                expression, frustration, distance_m, has_face, seconds_since_cat
     Returns: list of float samples
     """
     # Randomize element order each time for variety
@@ -267,6 +314,9 @@ def compose_status_phrase(state):
     elements.append(('curiosity', lambda: encode_curiosity(state.get('curiosity', 0))))
     elements.append(('battery', lambda: encode_battery(state.get('battery_pct', 50))))
     elements.append(('wanderlust', lambda: encode_wanderlust(state.get('wanderlust', 0))))
+    elements.append(('builder', lambda: encode_builder(state.get('builder', 0))))
+    elements.append(('expression', lambda: encode_expression(state.get('expression', 0))))
+    elements.append(('frustration', lambda: encode_frustration(state.get('frustration', 0))))
     elements.append(('distance', lambda: encode_distance(state.get('distance_m', 0))))
 
     # Cat motif only if recently seen

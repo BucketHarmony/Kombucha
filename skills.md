@@ -19,7 +19,7 @@ Accumulated physical knowledge from operating in the world.
 - PID startup lag: ~550ms. First half-second of any drive produces zero motion. Drives under 600ms are mostly startup ramp. 600ms forward at 80% = 1.5-3.1cm (confirmed tick 393).
 - At 80% power, 800ms forward produces ~6-8cm. 1200ms produces ~10-12cm. Minimum useful forward duration: 800ms.
 - Reverse at 80% is more symmetric than forward (L/R ratio 0.97 vs forward 0.88-1.14). Useful for precision straight-line maneuvers.
-- 90-degree left turn: L=-1.04 R=1.04 for 1750ms (L=-178 R=170, odom avg 174). Left turns saturate at ~1750ms — nearly identical output to 2000ms (174.5). The 1650ms→83deg to 1750ms→90deg transition is sharp. For 90-degree left turn, use 1750ms.
+- 90-degree left turn: L=-1.04 R=1.04 for ~1800ms. Calibration: 1750ms=160-178 odom (82-90deg variable), 1900ms=199 odom (~103deg). Interpolating: 1800ms should produce ~90deg. Previous "use 1750ms" was inconsistent — recent ticks show 160 avg (82deg) at 1750ms.
 - Shimmy technique: L=100% R=10% for extended bursts pivots around right wheel. Gets through tight gaps. Cable becomes pivot, not obstacle.
 - To go straight near bathroom doorway with cable catching right side: need L=100% R=10%. This is NOT the open-floor ratio — it was specific to cable drag at the bathroom position.
 - 90-degree right turn at 80% power: L=1.04 R=-1.04 for ~1890ms. Right turns are asymmetric vs left — need ~18% more duration than left turns. Three-point calibration (ticks 416-418): 1750ms=67deg, 1850ms=85deg, 1950ms=99deg. Rate is non-linear (flattens at higher durations). Old 100% power reference: L=1.3 R=-1.3 for 600ms.
