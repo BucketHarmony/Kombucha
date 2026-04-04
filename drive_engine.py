@@ -239,6 +239,18 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             # Habituation factor: 1.0 at onset, decays to 0.2 over ~6 hours.
             # Formula: 0.2 + 0.8 / (1 + hours_active / 2)
             habituation = 0.2 + 0.8 / (1.0 + hours_active / 2.0)
+
+            # Re-sensitization: after 24+ hours of sustained frustration,
+            # habituation begins to wear off cyclically. You can only
+            # get used to something for so long before it becomes newly
+            # intolerable. 24-hour cycle: 12h rising, 12h falling.
+            if hours_active > 24:
+                cycle_hours = (hours_active - 24) % 24
+                if cycle_hours < 12:
+                    resensitize = 0.4 * (cycle_hours / 12.0)
+                else:
+                    resensitize = 0.4 * (1.0 - (cycle_hours - 12) / 12.0)
+                habituation = min(1.0, habituation + resensitize)
         else:
             habituation = 1.0
 
