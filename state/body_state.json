@@ -1,19 +1,19 @@
 {
-  "last_tick": 458,
-  "wake_count": 317,
-  "last_invocation": "2026-04-04T15:00:38-04:00",
+  "last_tick": 459,
+  "wake_count": 318,
+  "last_invocation": "2026-04-04T16:00:41-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "prowling",
-  "last_drive_time": 1775332838.0,
+  "last_mood": "restless",
+  "last_drive_time": 1775336441.0,
   "drives": {
-    "wanderlust": 2.6490953233506944e-10,
+    "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.4382712774640984,
+    "builder": 0.28,
     "expression": 0.0,
-    "frustration": 0.6501612483754031
+    "frustration": 0.6250097233236672
   },
-  "_last_known_distance": 56.94,
+  "_last_known_distance": 57.333,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -32,10 +32,10 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
+    "restless",
     "prowling",
     "weary",
     "restless",
-    "prowling",
     "prowling"
   ],
   "_audio_clip_enabled_tick": 436,
@@ -45,12 +45,14 @@
   "_audio_loop_tested_tick": 442,
   "_audio_loop_result": "mic hears speaker (RMS 0.0001->0.0013), but event pipeline suppresses self-tones",
   "_audio_suppression_fixed_tick": 445,
-  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds \u2014 external sounds now detectable during playback",
+  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds — external sounds now detectable during playback",
   "_box_patrol_result": "355deg/360deg over 4 turns, sides 6.0-8.9cm. Blind dead-reckoning cannot close precision square.",
   "_left_turn_no_cable_catch_tick": 447,
-  "_cable_direction_note": "Left turn at tick 447 produced no cable catch \u2014 rule may be position-dependent, not universal",
+  "_cable_direction_note": "Left turn at tick 447 produced no cable catch — rule may be position-dependent, not universal",
   "_120deg_turn_calibration": "2330ms at 80% produces ~108-115deg (avg 216 odom ticks). Need ~2500ms for 120deg. Turn rate is sublinear with duration.",
   "_triangle_patrol_tick": 448,
   "_frustration_habituation_tick": 449,
-  "_frustration_habituation_note": "drive_engine.py: added habituation factor to frustration charging. Persistent sources charge less over time (factor 1.0->0.2 over ~6h). Frustration now decays from 0.90->0.877 instead of climbing to 1.0."
+  "_frustration_habituation_note": "drive_engine.py: added habituation factor to frustration charging. Persistent sources charge less over time (factor 1.0->0.2 over ~6h). Frustration now decays from 0.90->0.877 instead of climbing to 1.0.",
+  "_self_talk_wiring_fixed_tick": 459,
+  "_self_talk_fix": "play_self_talk: changed modulo 3->4, added 4th pattern for builder+expression+frustration encoders"
 }
