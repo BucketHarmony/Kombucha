@@ -864,13 +864,76 @@ def clear_plugged():
 
 @app.post("/camera/reset")
 def reset_camera():
-    """Reset camera to fix frozen frames."""
-    if frame_distributor is None:
-        raise HTTPException(status_code=503, detail="No frame distributor")
-    ok = frame_distributor.reset_camera()
-    if ok:
-        return {"result": "ok", "message": "Camera reset successful"}
-    raise HTTPException(status_code=503, detail="Camera reset failed")
+    """Deep camera reset: USB bus reset + re-init.
+
+    Works even when frame_distributor is None (camera absent at boot).
+    Attempts sysfs USB bus deauthorize/reauthorize before calling init_camera.
+    """
+    diag: dict = {"usb_buses_reset": [], "devices_before": [], "devices_after": [],
+                  "dmesg_tail": [], "result": "failed"}
+
+    # If frame_distributor exists, delegate to its reset logic
+    if frame_distributor is not None:
+        ok = frame_distributor.reset_camera()
+        if ok:
+            return {"result": "ok", "message": "Camera reset via frame distributor"}
+        diag["frame_distributor_reset"] = "failed, trying USB bus reset"
+
+    # Gather pre-reset diagnostics
+    try:
+        r = subprocess.run(["v4l2-ctl", "--list-devices"],
+                           capture_output=True, text=True, timeout=5)
+        diag["devices_before"] = r.stdout.strip().split("\n") if r.stdout else []
+    except Exception:
+        pass
+
+    # Reset USB bus 3 and 4 (USB 3.0 buses on Pi 5)
+    for bus in ["usb3", "usb4"]:
+        auth_path = f"/sys/bus/usb/devices/{bus}/authorized"
+        try:
+            subprocess.run(["sudo", "sh", "-c", f"echo 0 > {auth_path}"],
+                           timeout=3, capture_output=True)
+            time.sleep(1.5)
+            subprocess.run(["sudo", "sh", "-c", f"echo 1 > {auth_path}"],
+                           timeout=3, capture_output=True)
+            diag["usb_buses_reset"].append(bus)
+        except Exception as e:
+            diag["usb_buses_reset"].append(f"{bus}: error {e}")
+
+    # Wait for USB enumeration
+    time.sleep(4.0)
+
+    # Check dmesg for results
+    try:
+        r = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=5)
+        lines = r.stdout.strip().split("\n")
+        diag["dmesg_tail"] = [l for l in lines[-30:]
+                              if "usb" in l.lower() or "uvc" in l.lower() or "video" in l.lower()]
+    except Exception:
+        pass
+
+    # Check post-reset devices
+    try:
+        r = subprocess.run(["v4l2-ctl", "--list-devices"],
+                           capture_output=True, text=True, timeout=5)
+        diag["devices_after"] = r.stdout.strip().split("\n") if r.stdout else []
+    except Exception:
+        pass
+
+    # Try init_camera
+    new_cam = init_camera()
+    if new_cam is not None:
+        global camera
+        camera = new_cam
+        diag["result"] = "ok"
+        diag["message"] = "Camera recovered after USB bus reset"
+        log.info("Camera reset: RECOVERED after USB bus reset")
+        return diag
+
+    diag["result"] = "failed"
+    diag["message"] = "USB bus reset completed but camera did not appear. Physical intervention required."
+    log.warning(f"Camera reset failed: {diag['message']}")
+    return JSONResponse(status_code=503, content=diag)
 
 
 @app.post("/frustration")
