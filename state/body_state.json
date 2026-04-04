@@ -1,19 +1,19 @@
 {
-  "last_tick": 461,
-  "wake_count": 320,
-  "last_invocation": "2026-04-04T19:00:36-04:00",
+  "last_tick": 462,
+  "wake_count": 321,
+  "last_invocation": "2026-04-04T19:00:34-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "prowling",
-  "last_drive_time": 1775340029.0,
+  "last_mood": "restless",
+  "last_drive_time": 1775347234.0,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.23804343049724896,
+    "builder": 0.12,
     "expression": 0.0,
-    "frustration": 0.5742870077388081
+    "frustration": 0.58
   },
-  "_last_known_distance": 57.824,
+  "_last_known_distance": 58.402,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -32,12 +32,12 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "weary",
     "restless",
     "prowling",
     "restless",
     "becalmed",
-    "prowling"
+    "prowling",
+    "restless"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
@@ -46,10 +46,10 @@
   "_audio_loop_tested_tick": 442,
   "_audio_loop_result": "mic hears speaker (RMS 0.0001->0.0013), but event pipeline suppresses self-tones",
   "_audio_suppression_fixed_tick": 445,
-  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds \u2014 external sounds now detectable during playback",
+  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds — external sounds now detectable during playback",
   "_box_patrol_result": "355deg/360deg over 4 turns, sides 6.0-8.9cm. Blind dead-reckoning cannot close precision square.",
   "_left_turn_no_cable_catch_tick": 447,
-  "_cable_direction_note": "Left turn at tick 447 produced no cable catch \u2014 rule may be position-dependent, not universal",
+  "_cable_direction_note": "Left turn at tick 447 produced no cable catch — rule may be position-dependent, not universal",
   "_120deg_turn_calibration": "2330ms at 80% produces ~108-115deg (avg 216 odom ticks). Need ~2500ms for 120deg. Turn rate is sublinear with duration.",
   "_triangle_patrol_tick": 448,
   "_frustration_habituation_tick": 449,
@@ -59,5 +59,7 @@
   "_becalmed_gesture_added_tick": 460,
   "_becalmed_gesture_note": "new gesture for the specific feeling of having fixed everything reachable while the unfixable thing persists. Slow, heavy, low-energy.",
   "_resensitization_added_tick": 461,
-  "_resensitization_note": "drive_engine.py: after 24h+ of frustration habituation, factor climbs back from ~0.2 toward 0.6 on 24h cycle (12h up, 12h down). Cyclical frustration vs monotonic decay."
+  "_resensitization_note": "drive_engine.py: after 24h+ of frustration habituation, factor climbs back from ~0.2 toward 0.6 on 24h cycle (12h up, 12h down). Cyclical frustration vs monotonic decay.",
+  "_longer_drives_tested_tick": 462,
+  "_longer_drives_note": "1500ms forward at 80%: 13.55-14.85cm (avg 14.2cm). Better than linear scaling from 1000ms (10cm) — startup lag amortized over longer duration."
 }
