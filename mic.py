@@ -168,11 +168,14 @@ class AudioListener(threading.Thread):
         self._noise_floor = (NOISE_FLOOR_ALPHA * rms +
                              (1 - NOISE_FLOOR_ALPHA) * self._noise_floor)
 
-        if suppressed:
-            return
+        # During suppression (self-tone playing), use elevated thresholds
+        # instead of blanket detection kill. Self-tones produce RMS ~0.001
+        # which is below all thresholds anyway, but loud external sounds
+        # (person talking, clap, door) should still register.
+        suppress_mult = 3.0 if suppressed else 1.0
 
         # Noise shift detection: room got louder relative to floor
-        threshold = self._noise_floor * NOISE_SHIFT_RATIO
+        threshold = self._noise_floor * NOISE_SHIFT_RATIO * suppress_mult
         if rms > threshold and self._noise_floor > 0.0005:
             self._above_noise_since += 1
             if (self._above_noise_since >= NOISE_SHIFT_CHUNKS and
@@ -185,16 +188,16 @@ class AudioListener(threading.Thread):
         else:
             self._above_noise_since = 0
 
-        # Impulse detection: sudden spike
-        if peak > IMPULSE_THRESHOLD and (now - self._last_impulse_t) > 0.5:
+        # Impulse detection: sudden spike (elevated during suppression)
+        if peak > IMPULSE_THRESHOLD * suppress_mult and (now - self._last_impulse_t) > 0.5:
             self._last_impulse_t = now
             event = AudioEvent("impulse", peak, rms)
             with self._lock:
                 self._events.append(event)
             logger.info(f"Audio impulse: peak={peak:.3f} rms={rms:.3f}")
 
-        # Sustained sound detection
-        if rms > SUSTAINED_THRESHOLD:
+        # Sustained sound detection (elevated during suppression)
+        if rms > SUSTAINED_THRESHOLD * suppress_mult:
             if self._above_sustained_since is None:
                 self._above_sustained_since = now
             elif (now - self._above_sustained_since) >= SUSTAINED_DURATION_S:
