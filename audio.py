@@ -139,6 +139,25 @@ MOOD_SEQUENCES = {
     ],
 }
 
+# Reactive audio sequences — responses to environmental sound events
+REACTIVE_SEQUENCES = {
+    "impulse": [
+        {"type": "chirp", "start": 600, "end": 1100, "ms": 60},
+        {"type": "silence", "ms": 30},
+        {"type": "beep", "freq": 900, "ms": 80},
+    ],
+    "sustained": [
+        {"type": "beep", "freq": 800, "ms": 80},
+        {"type": "silence", "ms": 60},
+        {"type": "beep", "freq": 800, "ms": 80},
+        {"type": "chirp", "start": 800, "end": 1000, "ms": 100},
+    ],
+    "noise_shift": [
+        {"type": "chirp", "start": 500, "end": 700, "ms": 100},
+        {"type": "beep", "freq": 700, "ms": 60},
+    ],
+}
+
 
 def _generate_samples(n_samples):
     """Generate a time array for n_samples at SAMPLE_RATE."""
@@ -368,6 +387,60 @@ class TonePlayer:
     def is_playing(self):
         with self._lock:
             return self._playing
+
+
+class ReactiveAudioBridge(threading.Thread):
+    """Connects AudioListener events to TonePlayer responses.
+
+    Polls the mic listener for new events and plays contextual tones.
+    This is the nervous system between ear and voice.
+    """
+
+    COOLDOWN_S = 5.0  # min seconds between reactive tones
+
+    def __init__(self, listener, player):
+        super().__init__(daemon=True, name="ReactiveAudioBridge")
+        self.listener = listener
+        self.player = player
+        self._stop_event = threading.Event()
+        self._last_react_t = 0.0
+        self._react_count = 0
+
+    def run(self):
+        logger.info("ReactiveAudioBridge started — ear connected to voice")
+        while not self._stop_event.is_set():
+            try:
+                snap = self.listener.snapshot()
+                events = snap.get("events", [])
+                now = time.time()
+                for ev in events:
+                    # Only react to events we haven't seen (within last 2s)
+                    ev_t = ev.get("t", 0)
+                    if ev_t <= self._last_react_t:
+                        continue
+                    if (now - ev_t) > 5.0:
+                        continue  # stale event
+                    if (now - self._last_react_t) < self.COOLDOWN_S:
+                        continue  # cooldown
+                    ev_type = ev.get("type", "impulse")
+                    seq = REACTIVE_SEQUENCES.get(ev_type,
+                              REACTIVE_SEQUENCES.get("impulse"))
+                    self.player.play_sequence(seq, label=f"react_{ev_type}")
+                    self.listener.suppress(1.5)  # suppress self-hearing
+                    self._last_react_t = now
+                    self._react_count += 1
+                    logger.info(f"Reactive tone: {ev_type} (count={self._react_count})")
+                    break  # one reaction per poll cycle
+            except Exception as e:
+                logger.error(f"ReactiveAudioBridge error: {e}")
+            self._stop_event.wait(0.5)  # poll every 500ms
+
+    def stop(self):
+        self._stop_event.set()
+
+    @property
+    def stats(self):
+        return {"react_count": self._react_count, "last_react_t": self._last_react_t}
 
 
 # Convenience: run from command line to test
