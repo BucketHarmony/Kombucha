@@ -1,19 +1,19 @@
 {
-  "last_tick": 460,
-  "wake_count": 319,
-  "last_invocation": "2026-04-04T18:00:29-04:00",
+  "last_tick": 461,
+  "wake_count": 320,
+  "last_invocation": "2026-04-04T19:00:36-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "becalmed",
+  "last_mood": "prowling",
   "last_drive_time": 1775340029.0,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.11305398056904475,
+    "builder": 0.23804343049724896,
     "expression": 0.0,
-    "frustration": 0.5997155863665151
+    "frustration": 0.5742870077388081
   },
-  "_last_known_distance": 57.602,
+  "_last_known_distance": 57.824,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -36,7 +36,8 @@
     "restless",
     "prowling",
     "restless",
-    "becalmed"
+    "becalmed",
+    "prowling"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
@@ -56,5 +57,7 @@
   "_self_talk_wiring_fixed_tick": 459,
   "_self_talk_fix": "play_self_talk: changed modulo 3->4, added 4th pattern for builder+expression+frustration encoders",
   "_becalmed_gesture_added_tick": 460,
-  "_becalmed_gesture_note": "new gesture for the specific feeling of having fixed everything reachable while the unfixable thing persists. Slow, heavy, low-energy."
+  "_becalmed_gesture_note": "new gesture for the specific feeling of having fixed everything reachable while the unfixable thing persists. Slow, heavy, low-energy.",
+  "_resensitization_added_tick": 461,
+  "_resensitization_note": "drive_engine.py: after 24h+ of frustration habituation, factor climbs back from ~0.2 toward 0.6 on 24h cycle (12h up, 12h down). Cyclical frustration vs monotonic decay."
 }
