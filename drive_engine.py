@@ -197,6 +197,7 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
     # Track what is causing frustration so we can relieve it proportionally
     # when the source clears.
     frustration_sources = set()
+    state["_frustration_pre_charge"] = drives.get("frustration", 0)
     if sense:
         if sense.get("stuck", False):
             drives["frustration"] = clamp01(
@@ -226,12 +227,32 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
         state["_frustration_sources"] = list(frustration_sources)
         if not prev_sources:
             state["_frustration_onset"] = time.time()
+
+        # Habituation: the longer a source persists, the less it charges.
+        # A new failure is urgent. A failure that's been there for 20 hours
+        # is background noise. This models acceptance — not resignation,
+        # but the reality that sustained frustration without new information
+        # should plateau, not peg at 1.0 forever.
+        onset = state.get("_frustration_onset")
+        if onset:
+            hours_active = (time.time() - onset) / 3600
+            # Habituation factor: 1.0 at onset, decays to 0.2 over ~6 hours.
+            # Formula: 0.2 + 0.8 / (1 + hours_active / 2)
+            habituation = 0.2 + 0.8 / (1.0 + hours_active / 2.0)
+        else:
+            habituation = 1.0
+
+        # Re-apply frustration charges scaled by habituation
+        # (undo the full charges above, apply habituated versions)
+        # Simpler: just scale the net charge from this update
+        current = drives["frustration"]
+        pre_charge = state.get("_frustration_pre_charge", current)
+        charge_delta = current - pre_charge
+        if charge_delta > 0:
+            drives["frustration"] = clamp01(
+                pre_charge + charge_delta * habituation)
+
         # Apply slow decay even while sources are active.
-        # Frustration should not permanently peg at 1.0 — working on the
-        # problem (committing code, making progress) should let it drift
-        # down, even if the root cause (e.g. dead camera) persists.
-        # Cap decay per update at 0.05 to prevent overwhelming the charge
-        # rate on hourly heartbeats (0.002 * 300s = 0.6 was wiping it out).
         decay_rate = DRIVE_CONFIG["frustration"]["decay_rate"]
         decay_amount = min(0.05, decay_rate * eff_elapsed)
         drives["frustration"] = clamp01(
@@ -247,6 +268,7 @@ def update_drives(state: dict, sense: dict = None, elapsed_s: float = 3600.0) ->
             state.pop("_frustration_sources", None)
             state.pop("_frustration_onset", None)
 
+    state.pop("_frustration_pre_charge", None)
     state["drives"] = drives
     return state
 
