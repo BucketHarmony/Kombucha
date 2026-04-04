@@ -1,19 +1,19 @@
 {
-  "last_tick": 445,
-  "wake_count": 304,
-  "last_invocation": "2026-04-04T02:03:15-04:00",
+  "last_tick": 446,
+  "wake_count": 305,
+  "last_invocation": "2026-04-04T03:00:55-04:00",
   "last_mode": "heartbeat",
   "last_mood": "circling",
-  "last_drive_time": 1775361795.0,
+  "last_drive_time": 1775289655.0,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.30,
+    "builder": 0.11879144022862116,
     "expression": 0.0,
-    "frustration": 0.70
+    "frustration": 0.7499999999999999
   },
-  "_last_known_distance": 52.663,
+  "_last_known_distance": 53.163,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -32,10 +32,10 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "determined",
     "prowling",
     "restless",
     "prowling",
+    "circling",
     "circling"
   ],
   "_audio_clip_enabled_tick": 436,
@@ -45,5 +45,6 @@
   "_audio_loop_tested_tick": 442,
   "_audio_loop_result": "mic hears speaker (RMS 0.0001->0.0013), but event pipeline suppresses self-tones",
   "_audio_suppression_fixed_tick": 445,
-  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds — external sounds now detectable during playback"
+  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds — external sounds now detectable during playback",
+  "_box_patrol_result": "355deg/360deg over 4 turns, sides 6.0-8.9cm. Blind dead-reckoning cannot close precision square."
 }
