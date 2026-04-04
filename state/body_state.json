@@ -1,19 +1,19 @@
 {
-  "last_tick": 447,
-  "wake_count": 306,
-  "last_invocation": "2026-04-04T04:01:01-04:00",
+  "last_tick": 448,
+  "wake_count": 307,
+  "last_invocation": "2026-04-04T05:01:32-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "prowling",
-  "last_drive_time": 1775293261.0,
+  "last_mood": "restless",
+  "last_drive_time": 1775296892.0,
   "drives": {
-    "wanderlust": 0.0,
+    "wanderlust": 2.9802322387695313e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.24377200731800663,
+    "builder": 0.36876657583647304,
     "expression": 0.0,
-    "frustration": 0.7999999999999998
+    "frustration": 0.8499999999999998
   },
-  "_last_known_distance": 53.665,
+  "_last_known_distance": 54.059,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -32,11 +32,11 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "restless",
     "prowling",
     "circling",
     "circling",
-    "prowling"
+    "prowling",
+    "restless"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
@@ -45,8 +45,10 @@
   "_audio_loop_tested_tick": 442,
   "_audio_loop_result": "mic hears speaker (RMS 0.0001->0.0013), but event pipeline suppresses self-tones",
   "_audio_suppression_fixed_tick": 445,
-  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds — external sounds now detectable during playback",
+  "_audio_suppression_fix": "blanket return replaced with 3x elevated thresholds \u2014 external sounds now detectable during playback",
   "_box_patrol_result": "355deg/360deg over 4 turns, sides 6.0-8.9cm. Blind dead-reckoning cannot close precision square.",
   "_left_turn_no_cable_catch_tick": 447,
-  "_cable_direction_note": "Left turn at tick 447 produced no cable catch — rule may be position-dependent, not universal"
+  "_cable_direction_note": "Left turn at tick 447 produced no cable catch \u2014 rule may be position-dependent, not universal",
+  "_120deg_turn_calibration": "2330ms at 80% produces ~108-115deg (avg 216 odom ticks). Need ~2500ms for 120deg. Turn rate is sublinear with duration.",
+  "_triangle_patrol_tick": 448
 }
