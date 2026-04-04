@@ -1,19 +1,19 @@
 {
-  "last_tick": 452,
-  "wake_count": 311,
-  "last_invocation": "2026-04-04T10:00:41-04:00",
+  "last_tick": 453,
+  "wake_count": 312,
+  "last_invocation": "2026-04-04T10:00:40-04:00",
   "last_mode": "heartbeat",
   "last_mood": "weary",
-  "last_drive_time": 1775311241.0,
+  "last_drive_time": 1775314840.0,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.35901240502794585,
-    "expression": 0.06,
-    "frustration": 0.8062204627165195
+    "builder": 0.4840049936953518,
+    "expression": 0.12,
+    "frustration": 0.7821463952607142
   },
-  "_last_known_distance": 55.006,
+  "_last_known_distance": 55.177,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -32,11 +32,11 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "prowling",
     "restless",
     "agitated",
     "settling",
-    "prowling"
+    "prowling",
+    "weary"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
