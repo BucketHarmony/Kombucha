@@ -1,22 +1,22 @@
 {
-  "last_tick": 441,
-  "wake_count": 300,
-  "last_invocation": "2026-04-03T22:00:34-04:00",
+  "last_tick": 442,
+  "wake_count": 301,
+  "last_invocation": "2026-04-03T23:00:37-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "determined",
-  "last_drive_time": 1775271634.0,
+  "last_mood": "prowling",
+  "last_drive_time": 1743735637,
   "drives": {
     "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.11,
+    "builder": 0.24,
     "expression": 0.0,
     "frustration": 0.55
   },
-  "_last_known_distance": 51.042,
+  "_last_known_distance": 51.386,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
-  "_bridge_restarted_tick": 436,
+  "_bridge_restarted_tick": 441,
   "_cable_catches_right_wheel": true,
   "_right_turns_avoid_cable": true,
   "_cable_direction_confirmed": true,
@@ -33,13 +33,15 @@
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
     "restless",
-    "restless",
     "determined",
     "frustrated",
-    "determined"
+    "determined",
+    "prowling"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
   "_mic_device": "plughw:2,0",
-  "_audio_tones_added_tick": 439
+  "_audio_tones_added_tick": 439,
+  "_audio_loop_tested_tick": 442,
+  "_audio_loop_result": "mic hears speaker (RMS 0.0001->0.0013), but event pipeline suppresses self-tones"
 }
