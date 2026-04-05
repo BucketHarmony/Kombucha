@@ -1,9 +1,9 @@
 {
-  "last_tick": 469,
-  "wake_count": 328,
-  "last_invocation": "2026-04-05T02:00:34-04:00",
+  "last_tick": 470,
+  "wake_count": 329,
+  "last_invocation": "2026-04-05T03:00:40-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "industrious",
+  "last_mood": "prowling",
   "_3000ms_drives_tested_tick": 465,
   "_3000ms_drives_note": "3000ms forward at 80%: 29.6-30.65cm (avg 30.1cm). Duration-distance curve: 1000ms=10cm, 1500ms=14.2cm, 2000ms=18.9cm, 2500ms=24.7cm, 3000ms=30.1cm. Superlinear scaling plateaus at 3000ms as startup lag fully amortized. Post-startup effective speed ~12cm/s. Right turn 1950ms=93deg.",
   "_square_test_tick": 467,
@@ -12,16 +12,18 @@
   "_spiral_test_note": "First planner-guided exploration (not calibration). 2 forward legs (14.55+20.25cm) + 2 left turns (~90+87deg). Clean execution, no stuck. Left turns asymmetric: R odom > L by 10-20 ticks (ratio 0.88-0.93). Cable may drag left wheel during counterclockwise rotation. Left turn 1800ms avg ~88.5deg \u2014 slightly short, consider 1850ms for 90deg.",
   "_turn_planner_tick": 469,
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
-  "last_drive_time": 1775369111.5992937,
+  "_fwd_correction_tick": 470,
+  "_fwd_correction_note": "5% overshoot correction added to duration_for_distance(). Test: 25cm target \u2192 26.55cm (6.2% over). Correction too aggressive \u2014 need 3% not 5%. Cable catch on 3116ms drive: right wheel stalled at 1.2s. Left turn 1810ms \u2192 83deg (3rd data point at this value, 105deg was outlier).",
+  "last_drive_time": 1775372440.0,
   "drives": {
-    "wanderlust": 0.0,
+    "wanderlust": 0.22847676262259484,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.0,
-    "expression": 0.0,
-    "frustration": 0.6395339920455054
+    "builder": 0.11710649173292849,
+    "expression": 0.06,
+    "frustration": 0.6331701519857188
   },
-  "_last_known_distance": 62.424,
+  "_last_known_distance": 62.757,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -40,12 +42,12 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "becalmed",
     "prowling",
     "restless",
     "prowling",
     "restless",
-    "industrious"
+    "industrious",
+    "prowling"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
