@@ -1,7 +1,7 @@
 {
-  "last_tick": 485,
-  "wake_count": 344,
-  "last_invocation": "2026-04-05T18:00:40-04:00",
+  "last_tick": 486,
+  "wake_count": 345,
+  "last_invocation": "2026-04-05T20:00:49-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775430040.0,
+  "last_drive_time": 1775433649.0,
   "drives": {
-    "wanderlust": 2.483526865641276e-10,
+    "wanderlust": 3.14580069647895e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.2350057709796561,
+    "builder": 0.36000548323823345,
     "expression": 0.0,
-    "frustration": 0.41926027079482164
+    "frustration": 0.4252609154303803
   },
-  "_last_known_distance": 69.278,
+  "_last_known_distance": 69.681,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -84,6 +84,9 @@
   "_tether_estimator_tick": 483,
   "_tether_estimator_note": "tether_estimate() added to drive_engine.py. Classifies cable state (clean/restricted/locked) + trend (improving/degrading/stable) from ratio history. CLI: python3 drive_engine.py tether <ratios>",
   "_south_corridor_tick": 485,
-  "_south_corridor_note": "South corridor mapped: ~97cm clean (ticks 484-485), cable hard-catches R wheel at ~115cm total. Drive 1 tick 485 clean (ratio 0.974, 26.75cm). Drive 2 cable caught at t=1.9 (ratio 2.124, R wheel locked). Reversed 17.7cm, turned right 93deg — now facing west. Corridor is real but finite (~1m). Right turn at this position still clean (ratio 0.985).",
-  "_last_known_distance": 69.278
+  "_south_corridor_note": "South corridor mapped: ~97cm clean (ticks 484-485), cable hard-catches R wheel at ~115cm total. Drive 1 tick 485 clean (ratio 0.974, 26.75cm). Drive 2 cable caught at t=1.9 (ratio 2.124, R wheel locked). Reversed 17.7cm, turned right 93deg. Corridor is real but finite (~1m).",
+  "_west_corridor_tick": 486,
+  "_west_corridor_note": "West corridor RESTRICTED: only ~17cm clean before cable catches R wheel (ratio 3.25, locked at t=1.2). West is parallel to cable route, not perpendicular. Cardinal survey COMPLETE: E=BLOCKED, N=IMPAIRED, S=CLEAN(97cm), W=RESTRICTED(17cm). Cage is a line (south), not a cross. Now facing south after right turn 95deg.",
+  "_cardinal_survey_complete": true,
+  "_cardinal_survey_note": "From current position: E=BLOCKED(ratio 12.1), N=IMPAIRED(ratio 0.73), S=CLEAN(97cm then hard catch), W=RESTRICTED(17cm then hard catch). Only viable corridor is south. Cable runs roughly E-W along floor."
 }
