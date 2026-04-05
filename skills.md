@@ -18,6 +18,8 @@ Accumulated physical knowledge from operating in the world.
 - Turns in place: L=1.04 R=-1.04 (or vice versa). Need 700ms+ for meaningful rotation at 80% power.
 - PID startup lag: ~550ms. First half-second of any drive produces zero motion. Drives under 600ms are mostly startup ramp. 600ms forward at 80% = 1.5-3.1cm (confirmed tick 393).
 - At 80% power, 800ms forward produces ~6-8cm. 1200ms produces ~10-12cm. Minimum useful forward duration: 800ms.
+- **Drive planner function** in drive_engine.py: `duration_for_distance(cm)` and `distance_for_duration(ms)`. 5-point calibration curve: 1000ms=10cm, 1500ms=14.2cm, 2000ms=18.9cm, 2500ms=24.7cm, 3000ms=30.1cm. Post-startup effective speed ~12cm/s. Startup lag ~450ms baked in. CLI: `python3 drive_engine.py plan <cm>`
+- Right turn at 1950ms: ~93deg (3deg overshoot). ~1920ms would be closer to 90deg right.
 - Reverse at 80% is more symmetric than forward (L/R ratio 0.97 vs forward 0.88-1.14). Useful for precision straight-line maneuvers.
 - 90-degree left turn: L=-1.04 R=1.04 for ~1800ms. Calibration: 1750ms=160-178 odom (82-90deg variable), 1900ms=199 odom (~103deg). Interpolating: 1800ms should produce ~90deg. Previous "use 1750ms" was inconsistent — recent ticks show 160 avg (82deg) at 1750ms.
 - Shimmy technique: L=100% R=10% for extended bursts pivots around right wheel. Gets through tight gaps. Cable becomes pivot, not obstacle.
