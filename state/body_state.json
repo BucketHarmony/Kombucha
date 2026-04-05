@@ -1,9 +1,9 @@
 {
-  "last_tick": 482,
-  "wake_count": 341,
-  "last_invocation": "2026-04-05T16:00:50-04:00",
+  "last_tick": 483,
+  "wake_count": 342,
+  "last_invocation": "2026-04-05T16:00:35-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "exploring",
+  "last_mood": "resolute",
   "_compass_complete_tick": 475,
   "_compass_note": "Full heading compass: East=BLOCKED (ratio 12.1), North=IMPAIRED (ratio 0.73, L wheel drags), South=CLEAN (ratio 0.94), West=CLEAN (ratio 1.0). Cable routes to NE \u2014 blocks R wheel heading E, L wheel heading N. Gradient not binary.",
   "_planner_revised_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775416000.1,
+  "last_drive_time": 1775419201.7010484,
   "drives": {
-    "wanderlust": 2.814663781060113e-10,
+    "wanderlust": 3.311369154188368e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.2369328298833635,
+    "builder": 0.0,
     "expression": 0.0,
-    "frustration": 0.4209814604062409
+    "frustration": 0.4171220411652923
   },
-  "_last_known_distance": 68.544,
+  "_last_known_distance": 68.743,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -78,5 +78,9 @@
   "_resensitization_added_tick": 461,
   "_resensitization_note": "drive_engine.py: after 24h+ of frustration habituation, factor climbs back from ~0.2 toward 0.6 on 24h cycle (12h up, 12h down). Cyclical frustration vs monotonic decay.",
   "_longer_drives_tested_tick": 462,
-  "_longer_drives_note": "1500ms forward at 80%: 13.55-14.85cm (avg 14.2cm). Better than linear scaling from 1000ms (10cm) \u2014 startup lag amortized over longer duration."
+  "_longer_drives_note": "1500ms forward at 80%: 13.55-14.85cm (avg 14.2cm). Better than linear scaling from 1000ms (10cm) \u2014 startup lag amortized over longer duration.",
+  "_reverse_degradation_tick": 483,
+  "_reverse_degradation_note": "Sustained reverse degrades progressively: 3x 2500ms reverse ratios 1.055->1.108->1.211. Cable restricts R wheel in reverse too, worsening with each drive. Reversing retraces cable geometry rather than freeing it. Need topological rerouting, not linear retreat.",
+  "_tether_estimator_tick": 483,
+  "_tether_estimator_note": "tether_estimate() added to drive_engine.py. Classifies cable state (clean/restricted/locked) + trend (improving/degrading/stable) from ratio history. CLI: python3 drive_engine.py tether <ratios>"
 }
