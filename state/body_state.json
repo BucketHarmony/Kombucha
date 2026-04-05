@@ -1,21 +1,23 @@
 {
-  "last_tick": 465,
-  "wake_count": 324,
-  "last_invocation": "2026-04-04T23:00:49-04:00",
+  "last_tick": 466,
+  "wake_count": 325,
+  "last_invocation": "2026-04-04T23:00:35-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "restless",
+  "last_mood": "prowling",
   "_3000ms_drives_tested_tick": 465,
   "_3000ms_drives_note": "3000ms forward at 80%: 29.6-30.65cm (avg 30.1cm). Duration-distance curve: 1000ms=10cm, 1500ms=14.2cm, 2000ms=18.9cm, 2500ms=24.7cm, 3000ms=30.1cm. Superlinear scaling plateaus at 3000ms as startup lag fully amortized. Post-startup effective speed ~12cm/s. Right turn 1950ms=93deg.",
-  "last_drive_time": 1775350839.0,
+  "_square_test_tick": 466,
+  "_square_test_note": "Half-square (2 sides + 2 turns). Planner predicted 20cm per side, actual avg 20.8cm (4% overshoot). Right turns at 1920ms: 92deg+91deg (avg 91.5deg, much better than 1950ms=93deg). 1920ms is new right-turn-90 reference.",
+  "last_drive_time": 1775358467.3665884,
   "drives": {
-    "wanderlust": 0.24738388063179123,
+    "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.49056705470714307,
+    "builder": 0.11043177445729574,
     "expression": 0.0,
-    "frustration": 0.6307693464353727
+    "frustration": 0.6381026961978699
   },
-  "_last_known_distance": 60.036,
+  "_last_known_distance": 60.507,
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -34,12 +36,12 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "restless",
     "prowling",
     "restless",
     "becalmed",
     "prowling",
-    "restless"
+    "restless",
+    "prowling"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,

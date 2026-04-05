@@ -18,13 +18,13 @@ Accumulated physical knowledge from operating in the world.
 - Turns in place: L=1.04 R=-1.04 (or vice versa). Need 700ms+ for meaningful rotation at 80% power.
 - PID startup lag: ~550ms. First half-second of any drive produces zero motion. Drives under 600ms are mostly startup ramp. 600ms forward at 80% = 1.5-3.1cm (confirmed tick 393).
 - At 80% power, 800ms forward produces ~6-8cm. 1200ms produces ~10-12cm. Minimum useful forward duration: 800ms.
-- **Drive planner function** in drive_engine.py: `duration_for_distance(cm)` and `distance_for_duration(ms)`. 5-point calibration curve: 1000ms=10cm, 1500ms=14.2cm, 2000ms=18.9cm, 2500ms=24.7cm, 3000ms=30.1cm. Post-startup effective speed ~12cm/s. Startup lag ~450ms baked in. CLI: `python3 drive_engine.py plan <cm>`
-- Right turn at 1950ms: ~93deg (3deg overshoot). ~1920ms would be closer to 90deg right.
+- **Drive planner function** in drive_engine.py: `duration_for_distance(cm)` and `distance_for_duration(ms)`. 5-point calibration curve: 1000ms=10cm, 1500ms=14.2cm, 2000ms=18.9cm, 2500ms=24.7cm, 3000ms=30.1cm. Post-startup effective speed ~12cm/s. Startup lag ~450ms baked in. CLI: `python3 drive_engine.py plan <cm>`. Navigation test (tick 466 half-square): planner predicted 20cm, actual avg 20.8cm (~4% overshoot). Accurate enough for blind navigation.
+- Right turn at 1920ms: 92deg and 91deg (avg 91.5deg). Best right-turn-90 calibration — 1920ms confirmed better than 1950ms (93deg overshoot). Tested in tick 466 square pattern.
 - Reverse at 80% is more symmetric than forward (L/R ratio 0.97 vs forward 0.88-1.14). Useful for precision straight-line maneuvers.
 - 90-degree left turn: L=-1.04 R=1.04 for ~1800ms. Calibration: 1750ms=160-178 odom (82-90deg variable), 1900ms=199 odom (~103deg). Interpolating: 1800ms should produce ~90deg. Previous "use 1750ms" was inconsistent — recent ticks show 160 avg (82deg) at 1750ms.
 - Shimmy technique: L=100% R=10% for extended bursts pivots around right wheel. Gets through tight gaps. Cable becomes pivot, not obstacle.
 - To go straight near bathroom doorway with cable catching right side: need L=100% R=10%. This is NOT the open-floor ratio — it was specific to cable drag at the bathroom position.
-- 90-degree right turn at 80% power: L=1.04 R=-1.04 for ~1890ms. Right turns are asymmetric vs left — need ~18% more duration than left turns. Three-point calibration (ticks 416-418): 1750ms=67deg, 1850ms=85deg, 1950ms=99deg. Rate is non-linear (flattens at higher durations). Old 100% power reference: L=1.3 R=-1.3 for 600ms.
+- 90-degree right turn at 80% power: L=1.04 R=-1.04 for 1920ms. Updated calibration (tick 466): 1920ms=91.5deg avg. Four-point reference: 1750ms=67deg, 1850ms=85deg, 1920ms=91.5deg, 1950ms=93deg. Rate is non-linear. Old 100% power reference: L=1.3 R=-1.3 for 600ms.
 - Reverse at 90% is very symmetric (L=-180 R=-184 for 2000ms = 18.2cm straight back).
 - Bathroom threshold has a ~1/4 inch lip (step up from hallway). NOT flat as previously believed. This explains threshold stalls.
 - Going OUT of bathroom = stepping DOWN the lip. Should be easier than going in.
