@@ -136,6 +136,82 @@ def distance_for_duration(duration_ms: int) -> float:
     return max_cm + extra_ms * POST_STARTUP_SPEED_CM_PER_S / 1000
 
 
+# --- Turn Planner ---
+# Empirical duration-degree curves from blind calibration (ticks 446-468).
+# Measured at 80% power (L=1.04, R=-1.04 or vice versa) on hardwood floor.
+# Right turns are symmetric; left turns have cable-drag asymmetry.
+RIGHT_TURN_POINTS = [
+    (1750, 67.0),     # tick 446-447 calibration
+    (1850, 85.0),     # tick 448 calibration
+    (1920, 91.5),     # tick 466 (avg of 92 + 91)
+    (1950, 93.0),     # tick 465 calibration
+]
+
+LEFT_TURN_POINTS = [
+    (1750, 82.0),     # tick 447 (variable 82-90, low end)
+    (1800, 88.5),     # tick 468 (avg of 90 + 87)
+    (1900, 103.0),    # tick — extrapolated from 1900ms=199 odom
+]
+
+
+def duration_for_turn(target_deg: float, direction: str = "right") -> int:
+    """Return turn duration (ms) for target_deg at 80% power.
+
+    direction: "right" (CW, L=1.04 R=-1.04) or "left" (CCW, L=-1.04 R=1.04).
+    Left turns are ~3-5% slower due to cable drag on left wheel during CCW.
+    Returns at least 600ms. Caps at 5000ms.
+    """
+    if target_deg <= 0:
+        return 0
+
+    points = RIGHT_TURN_POINTS if direction == "right" else LEFT_TURN_POINTS
+
+    # Below minimum calibration: linear extrapolation from first point
+    if target_deg <= points[0][1]:
+        ratio = target_deg / points[0][1]
+        return max(600, int(points[0][0] * ratio))
+
+    # Between calibration points: linear interpolation
+    for i in range(len(points) - 1):
+        d0, deg0 = points[i]
+        d1, deg1 = points[i + 1]
+        if target_deg <= deg1:
+            frac = (target_deg - deg0) / (deg1 - deg0)
+            return int(d0 + frac * (d1 - d0))
+
+    # Beyond max calibration: linear extrapolation from last two points
+    d_prev, deg_prev = points[-2]
+    d_last, deg_last = points[-1]
+    rate = (d_last - d_prev) / (deg_last - deg_prev)  # ms per degree
+    extra_deg = target_deg - deg_last
+    return min(5000, int(d_last + extra_deg * rate))
+
+
+def degrees_for_duration(duration_ms: int, direction: str = "right") -> float:
+    """Return estimated degrees for a turn of given duration at 80% power."""
+    if duration_ms <= 0:
+        return 0.0
+
+    points = RIGHT_TURN_POINTS if direction == "right" else LEFT_TURN_POINTS
+
+    if duration_ms <= points[0][0]:
+        ratio = duration_ms / points[0][0]
+        return points[0][1] * ratio
+
+    for i in range(len(points) - 1):
+        d0, deg0 = points[i]
+        d1, deg1 = points[i + 1]
+        if duration_ms <= d1:
+            frac = (duration_ms - d0) / (d1 - d0)
+            return deg0 + frac * (deg1 - deg0)
+
+    d_prev, deg_prev = points[-2]
+    d_last, deg_last = points[-1]
+    rate = (deg_last - deg_prev) / (d_last - d_prev)  # degrees per ms
+    extra_ms = duration_ms - d_last
+    return deg_last + extra_ms * rate
+
+
 def load_state() -> dict:
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
@@ -461,6 +537,17 @@ def main():
         dur = duration_for_distance(target)
         est = distance_for_duration(dur)
         print(f"Target: {target:.1f}cm → duration: {dur}ms → estimated: {est:.1f}cm")
+
+    elif cmd == "turn":
+        if len(sys.argv) < 3:
+            print("Usage: drive_engine.py turn <degrees> [left|right]")
+            print("  Returns duration_ms needed for that turn at 80% power.")
+            sys.exit(1)
+        target = float(sys.argv[2])
+        direction = sys.argv[3] if len(sys.argv) > 3 else "right"
+        dur = duration_for_turn(target, direction)
+        est = degrees_for_duration(dur, direction)
+        print(f"Target: {target:.0f}deg {direction} → duration: {dur}ms → estimated: {est:.1f}deg")
 
     else:
         print(f"Unknown command: {cmd}")
