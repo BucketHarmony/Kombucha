@@ -61,6 +61,81 @@ DRIVE_CONFIG = {
 }
 
 
+# --- Drive Planner ---
+# Empirical duration-distance curve from blind calibration (ticks 460-465).
+# Measured at 80% power (L=1.04, R=1.08) on hardwood floor.
+# Startup lag (~450ms) is baked into these measurements.
+CALIBRATION_POINTS = [
+    (1000, 10.0),    # 1000ms → 10.0cm
+    (1500, 14.2),    # 1500ms → 14.2cm
+    (2000, 18.9),    # 2000ms → 18.9cm
+    (2500, 24.7),    # 2500ms → 24.7cm
+    (3000, 30.1),    # 3000ms → 30.1cm
+]
+
+# Post-startup effective speed: ~12cm/s (once wheels are moving).
+# Startup lag: ~450ms of zero motion at the beginning of every drive.
+STARTUP_LAG_MS = 450
+POST_STARTUP_SPEED_CM_PER_S = 12.0
+
+
+def duration_for_distance(target_cm: float) -> int:
+    """Return drive duration (ms) needed to travel target_cm forward at 80% power.
+
+    Uses linear interpolation between calibration points.
+    Extrapolates beyond the measured range using the post-startup linear model.
+    Returns at least 600ms (minimum useful drive duration).
+    """
+    if target_cm <= 0:
+        return 0
+
+    # Below minimum calibration point: extrapolate from startup model
+    if target_cm <= CALIBRATION_POINTS[0][1]:
+        ratio = target_cm / CALIBRATION_POINTS[0][1]
+        return max(600, int(CALIBRATION_POINTS[0][0] * ratio))
+
+    # Between calibration points: linear interpolation
+    for i in range(len(CALIBRATION_POINTS) - 1):
+        d0, cm0 = CALIBRATION_POINTS[i]
+        d1, cm1 = CALIBRATION_POINTS[i + 1]
+        if target_cm <= cm1:
+            frac = (target_cm - cm0) / (cm1 - cm0)
+            return int(d0 + frac * (d1 - d0))
+
+    # Beyond max calibration point: linear extrapolation at post-startup speed
+    max_d, max_cm = CALIBRATION_POINTS[-1]
+    extra_cm = target_cm - max_cm
+    extra_ms = extra_cm / POST_STARTUP_SPEED_CM_PER_S * 1000
+    return min(5000, int(max_d + extra_ms))  # cap at bridge max
+
+
+def distance_for_duration(duration_ms: int) -> float:
+    """Return estimated distance (cm) for a forward drive of given duration at 80% power.
+
+    Uses linear interpolation between calibration points.
+    """
+    if duration_ms <= 0:
+        return 0.0
+
+    # Below minimum calibration point
+    if duration_ms <= CALIBRATION_POINTS[0][0]:
+        ratio = duration_ms / CALIBRATION_POINTS[0][0]
+        return CALIBRATION_POINTS[0][1] * ratio
+
+    # Between calibration points: linear interpolation
+    for i in range(len(CALIBRATION_POINTS) - 1):
+        d0, cm0 = CALIBRATION_POINTS[i]
+        d1, cm1 = CALIBRATION_POINTS[i + 1]
+        if duration_ms <= d1:
+            frac = (duration_ms - d0) / (d1 - d0)
+            return cm0 + frac * (cm1 - cm0)
+
+    # Beyond max calibration: linear extrapolation
+    max_d, max_cm = CALIBRATION_POINTS[-1]
+    extra_ms = duration_ms - max_d
+    return max_cm + extra_ms * POST_STARTUP_SPEED_CM_PER_S / 1000
+
+
 def load_state() -> dict:
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
@@ -376,6 +451,16 @@ def main():
 
     elif cmd == "status":
         print(format_drives(state.get("drives", {})))
+
+    elif cmd == "plan":
+        if len(sys.argv) < 3:
+            print("Usage: drive_engine.py plan <distance_cm>")
+            print("  Returns duration_ms needed for that distance at 80% power.")
+            sys.exit(1)
+        target = float(sys.argv[2])
+        dur = duration_for_distance(target)
+        est = distance_for_duration(dur)
+        print(f"Target: {target:.1f}cm → duration: {dur}ms → estimated: {est:.1f}cm")
 
     else:
         print(f"Unknown command: {cmd}")
