@@ -85,14 +85,14 @@ def duration_for_distance(target_cm: float) -> int:
     Uses linear interpolation between calibration points.
     Extrapolates beyond the measured range using the post-startup linear model.
     Returns at least 600ms (minimum useful drive duration).
-    Applies 5% overshoot correction to compensate for consistent undershoot bias.
+    Applies 3% overshoot correction to compensate for consistent undershoot bias.
     """
     if target_cm <= 0:
         return 0
 
-    # Correction factor: planner undershoots by 4-6% consistently (ticks 468-469).
-    # Request 5% more distance to land closer to target.
-    target_cm = target_cm * 1.05
+    # Correction factor: planner undershoots by 4-6% (ticks 468-469), but 5% overcorrected
+    # to 6.2% overshoot (tick 470). Split the difference: 3% lands closer to target.
+    target_cm = target_cm * 1.03
 
     # Below minimum calibration point: extrapolate from startup model
     if target_cm <= CALIBRATION_POINTS[0][1]:
