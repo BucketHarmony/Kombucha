@@ -62,13 +62,15 @@ DRIVE_CONFIG = {
 
 
 # --- Drive Planner ---
-# Empirical duration-distance curve from blind calibration (ticks 460-465).
+# Empirical duration-distance curve from blind calibration.
 # Measured at 80% power (L=1.04, R=1.08) on hardwood floor.
 # Startup lag (~450ms) is baked into these measurements.
+# Revised tick 475: short-duration points were 14-16% optimistic.
+# 1000ms and 1500ms updated from clean-heading drives (ticks 474-475).
 CALIBRATION_POINTS = [
-    (1000, 10.0),    # 1000ms → 10.0cm
-    (1500, 14.2),    # 1500ms → 14.2cm
-    (2000, 18.9),    # 2000ms → 18.9cm
+    (1000, 8.5),     # 1000ms → 8.5cm (tick 475, ratio 1.04, clean heading)
+    (1500, 12.2),    # 1500ms → 12.2cm (tick 474 avg, two clean headings)
+    (2000, 18.9),    # 2000ms → 18.9cm (tick 471, confirmed)
     (2500, 24.7),    # 2500ms → 24.7cm
     (3000, 30.1),    # 3000ms → 30.1cm
 ]
@@ -90,9 +92,8 @@ def duration_for_distance(target_cm: float) -> int:
     if target_cm <= 0:
         return 0
 
-    # Correction factor: planner undershoots by 4-6% (ticks 468-469), but 5% overcorrected
-    # to 6.2% overshoot (tick 470). Split the difference: 3% lands closer to target.
-    target_cm = target_cm * 1.03
+    # Correction factor removed at tick 475: calibration points revised to match
+    # actual measurements from clean-heading drives. No correction needed now.
 
     # Below minimum calibration point: extrapolate from startup model
     if target_cm <= CALIBRATION_POINTS[0][1]:
