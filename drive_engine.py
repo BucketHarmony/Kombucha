@@ -316,6 +316,99 @@ def degrees_for_duration(duration_ms: int, direction: str = "right") -> float:
     return deg_last + extra_ms * rate
 
 
+# --- Tether Estimator ---
+# Uses recent drive ratio history to estimate cable slack state.
+# Ratios near 1.0 = clean slack. Ratios > 1.3 = cable restricting right wheel.
+# Ratios > 2.0 = cable catching/locking right wheel.
+
+TETHER_CLEAN = 1.15      # ratio below this = clean drive
+TETHER_RESTRICTED = 1.5   # ratio above this = cable restricting
+TETHER_LOCKED = 2.5       # ratio above this = cable locking
+
+def tether_estimate(recent_ratios: list[float]) -> dict:
+    """Estimate tether state from recent drive L/R ratios.
+
+    Args:
+        recent_ratios: List of odom_L/odom_R ratios from recent forward/reverse drives.
+                       Should be 3-10 drives. Turns excluded (use only straight drives).
+
+    Returns dict with:
+        state: "clean" | "restricted" | "locked" | "unknown"
+        trend: "improving" | "degrading" | "stable" | "unknown"
+        avg_ratio: mean ratio
+        worst_ratio: max ratio
+        clean_pct: percentage of drives that were clean
+        recommendation: string advice for next drive
+    """
+    if not recent_ratios:
+        return {
+            "state": "unknown", "trend": "unknown",
+            "avg_ratio": 0, "worst_ratio": 0, "clean_pct": 0,
+            "recommendation": "No data. Drive cautiously."
+        }
+
+    avg = sum(recent_ratios) / len(recent_ratios)
+    worst = max(recent_ratios)
+    clean_count = sum(1 for r in recent_ratios if r < TETHER_CLEAN)
+    clean_pct = clean_count / len(recent_ratios) * 100
+
+    # State: based on most recent 3 drives (or all if fewer)
+    recent = recent_ratios[-3:]
+    recent_avg = sum(recent) / len(recent)
+
+    if recent_avg >= TETHER_LOCKED:
+        state = "locked"
+    elif recent_avg >= TETHER_RESTRICTED:
+        state = "restricted"
+    elif recent_avg < TETHER_CLEAN:
+        state = "clean"
+    else:
+        state = "restricted"
+
+    # Trend: compare first half to second half
+    if len(recent_ratios) >= 4:
+        mid = len(recent_ratios) // 2
+        first_avg = sum(recent_ratios[:mid]) / mid
+        second_avg = sum(recent_ratios[mid:]) / (len(recent_ratios) - mid)
+        diff = second_avg - first_avg
+        if diff > 0.1:
+            trend = "degrading"
+        elif diff < -0.1:
+            trend = "improving"
+        else:
+            trend = "stable"
+    elif len(recent_ratios) >= 2:
+        if recent_ratios[-1] > recent_ratios[0] + 0.1:
+            trend = "degrading"
+        elif recent_ratios[-1] < recent_ratios[0] - 0.1:
+            trend = "improving"
+        else:
+            trend = "stable"
+    else:
+        trend = "unknown"
+
+    # Recommendation
+    if state == "locked":
+        recommendation = "Cable locked. Reverse to create slack before any forward drive."
+    elif state == "restricted" and trend == "degrading":
+        recommendation = "Cable tightening. Reverse 30-50cm to reset slack, then try a new heading."
+    elif state == "restricted":
+        recommendation = "Cable dragging. Short drives only (<1000ms). Consider reversing."
+    elif state == "clean" and trend == "degrading":
+        recommendation = "Clean but degrading. Approaching cable limit — monitor next 2 drives."
+    else:
+        recommendation = "Clean slack. Full drives safe."
+
+    return {
+        "state": state,
+        "trend": trend,
+        "avg_ratio": round(avg, 3),
+        "worst_ratio": round(worst, 3),
+        "clean_pct": round(clean_pct, 1),
+        "recommendation": recommendation,
+    }
+
+
 def load_state() -> dict:
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
@@ -651,6 +744,15 @@ def main():
         cr = float(sys.argv[4]) if len(sys.argv) > 4 else 0
         cd = int(sys.argv[5]) if len(sys.argv) > 5 else 0
         result = analyze_drive(resp, cl, cr, cd)
+        print(json.dumps(result, indent=2))
+
+    elif cmd == "tether":
+        if len(sys.argv) < 3:
+            print("Usage: drive_engine.py tether <ratio1> <ratio2> ...")
+            print("  Estimates cable slack from recent drive L/R ratios.")
+            sys.exit(1)
+        ratios = [float(x) for x in sys.argv[2:]]
+        result = tether_estimate(ratios)
         print(json.dumps(result, indent=2))
 
     elif cmd == "turn":
