@@ -61,6 +61,104 @@ DRIVE_CONFIG = {
 }
 
 
+# --- Drive Analyzer ---
+# Automatic telemetry analysis for drive responses.
+# Replaces manual per-tick calibration calculations.
+
+def analyze_drive(drive_response: dict, cmd_left: float = 0, cmd_right: float = 0,
+                  cmd_duration_ms: int = 0) -> dict:
+    """Analyze a drive response and return structured metrics.
+
+    Args:
+        drive_response: JSON from POST /drive endpoint
+        cmd_left, cmd_right: commanded motor speeds
+        cmd_duration_ms: commanded duration
+
+    Returns dict with:
+        distance_cm, odom_left, odom_right, ratio, startup_lag_ms,
+        speed_spikes (list), is_turn, stuck, flags (list of strings)
+    """
+    odom = drive_response.get("odometry_delta", {})
+    odom_l = abs(odom.get("left", 0))
+    odom_r = abs(odom.get("right", 0))
+    samples = drive_response.get("speed_samples", [])
+    stuck = drive_response.get("stuck", False)
+    dist_m = drive_response.get("distance_estimate_m", 0)
+
+    # Determine if this is a turn (opposite wheel directions)
+    is_turn = (cmd_left > 0 and cmd_right < 0) or (cmd_left < 0 and cmd_right > 0)
+
+    # Asymmetry ratio
+    if is_turn:
+        ratio = odom_l / odom_r if odom_r > 0 else float('inf')
+    else:
+        ratio = odom_l / odom_r if odom_r > 0 else float('inf')
+
+    # Startup lag: first sample where either wheel exceeds 0.05 m/s
+    startup_lag_ms = None
+    for s in samples:
+        if abs(s.get("wsl", 0)) > 0.05 or abs(s.get("wsr", 0)) > 0.05:
+            startup_lag_ms = int(s["t"] * 1000)
+            break
+
+    # Speed spikes: any sample where speed > 1.5 m/s AFTER startup phase.
+    # PID overshoots during startup (first 200ms of motion) are normal — only
+    # flag spikes that occur mid-drive, which indicate cable catch-release.
+    spike_start_s = (startup_lag_ms + 200) / 1000 if startup_lag_ms else 0.7
+    speed_spikes = []
+    for s in samples:
+        if s["t"] < spike_start_s:
+            continue
+        wsl = abs(s.get("wsl", 0))
+        wsr = abs(s.get("wsr", 0))
+        if wsl > 1.5 or wsr > 1.5:
+            speed_spikes.append({
+                "t": s["t"],
+                "wsl": s.get("wsl", 0),
+                "wsr": s.get("wsr", 0),
+            })
+
+    # Flags
+    flags = []
+    if stuck:
+        flags.append("STUCK")
+    if not is_turn and ratio > 1.15:
+        flags.append(f"VEERED_RIGHT (ratio {ratio:.3f})")
+    elif not is_turn and ratio < 0.85:
+        flags.append(f"VEERED_LEFT (ratio {ratio:.3f})")
+    if speed_spikes:
+        flags.append(f"SPEED_SPIKES ({len(speed_spikes)})")
+    if startup_lag_ms and startup_lag_ms > 600:
+        flags.append(f"HIGH_LAG ({startup_lag_ms}ms)")
+    if not is_turn and cmd_duration_ms > 0:
+        predicted = distance_for_duration(cmd_duration_ms)
+        actual = dist_m * 100
+        if predicted > 0:
+            error_pct = (actual - predicted) / predicted * 100
+            if abs(error_pct) > 10:
+                flags.append(f"PLANNER_ERROR ({error_pct:+.1f}%)")
+
+    # Estimate degrees for turns
+    turn_deg = None
+    if is_turn and odom_l > 0 and odom_r > 0:
+        avg_odom = (odom_l + odom_r) / 2
+        # Empirical: ~2 odom ticks per degree (from calibration data)
+        turn_deg = avg_odom / 2.0
+
+    return {
+        "distance_cm": round(dist_m * 100, 1),
+        "odom_left": odom_l,
+        "odom_right": odom_r,
+        "ratio": round(ratio, 3),
+        "startup_lag_ms": startup_lag_ms,
+        "speed_spikes": speed_spikes,
+        "is_turn": is_turn,
+        "turn_deg": round(turn_deg, 1) if turn_deg else None,
+        "stuck": stuck,
+        "flags": flags,
+    }
+
+
 # --- Drive Planner ---
 # Empirical duration-distance curve from blind calibration.
 # Measured at 80% power (L=1.04, R=1.08) on hardwood floor.
@@ -543,6 +641,17 @@ def main():
         dur = duration_for_distance(target)
         est = distance_for_duration(dur)
         print(f"Target: {target:.1f}cm → duration: {dur}ms → estimated: {est:.1f}cm")
+
+    elif cmd == "analyze":
+        if len(sys.argv) < 3:
+            print("Usage: drive_engine.py analyze '<drive_response_json>' [cmd_l cmd_r duration_ms]")
+            sys.exit(1)
+        resp = json.loads(sys.argv[2])
+        cl = float(sys.argv[3]) if len(sys.argv) > 3 else 0
+        cr = float(sys.argv[4]) if len(sys.argv) > 4 else 0
+        cd = int(sys.argv[5]) if len(sys.argv) > 5 else 0
+        result = analyze_drive(resp, cl, cr, cd)
+        print(json.dumps(result, indent=2))
 
     elif cmd == "turn":
         if len(sys.argv) < 3:
