@@ -1,9 +1,9 @@
 {
-  "last_tick": 472,
-  "wake_count": 331,
-  "last_invocation": "2026-04-05T05:01:00-04:00",
+  "last_tick": 473,
+  "wake_count": 332,
+  "last_invocation": "2026-04-05T06:01:12-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "prowling",
+  "last_mood": "determined",
   "_3000ms_drives_tested_tick": 465,
   "_3000ms_drives_note": "3000ms forward at 80%: 29.6-30.65cm (avg 30.1cm). Duration-distance curve: 1000ms=10cm, 1500ms=14.2cm, 2000ms=18.9cm, 2500ms=24.7cm, 3000ms=30.1cm. Superlinear scaling plateaus at 3000ms as startup lag fully amortized. Post-startup effective speed ~12cm/s. Right turn 1950ms=93deg.",
   "_square_test_tick": 467,
@@ -16,16 +16,18 @@
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
   "last_drive_time": 1775380026.1472678,
   "drives": {
-    "wanderlust": 0.0,
+    "wanderlust": 0.2205210862060388,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.1129132947160138,
-    "expression": 0.18,
-    "frustration": 0.6102035189882565
+    "builder": 0.2379046207252476,
+    "expression": 0.24,
+    "frustration": 0.5936075844326251
   },
-  "_last_known_distance": 63.71,
+  "_last_known_distance": 63.897,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
+  "_cable_directional_tick": 473,
+  "_cable_directional_note": "Cable is DIRECTIONAL, not just distance-limited. At 63.7m session, heading east (90deg) completely blocked (R wheel locked instantly, ratio 12.1). After 90deg right turn (heading ~180deg south), 2200ms drive clean at 18.9cm (ratio 0.96). Slack measurements are heading-dependent.",
   "_right_wheel_locked": false,
   "_camera_disconnected": true,
   "_bridge_restarted_tick": 441,
@@ -44,12 +46,12 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
+    "determined",
     "prowling",
     "restless",
     "prowling",
     "restless",
-    "industrious",
-    "prowling"
+    "industrious"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
