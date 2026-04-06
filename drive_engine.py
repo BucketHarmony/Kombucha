@@ -252,6 +252,8 @@ RIGHT_TURN_POINTS = [
 ]
 
 LEFT_TURN_POINTS = [
+    (1550, 67.0),     # tick 494 (odom avg 130 ticks, clean)
+    (1650, 82.0),     # tick 493 (odom avg 159.5 ticks, clean)
     (1750, 82.0),     # tick 447 (variable 82-90, low end)
     (1800, 88.5),     # tick 468 (avg of 90 + 87)
     (1900, 103.0),    # tick — extrapolated from 1900ms=199 odom
