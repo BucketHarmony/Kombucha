@@ -101,6 +101,8 @@ class TelemetryState:
         self.mx = 0.0
         self.my = 0.0
         self.mz = 0.0
+        self._mag_prev = (0.0, 0.0, 0.0)
+        self._mag_changed = False  # True if magnetometer has ever varied
         self.gimbal_pan = 0.0
         self.gimbal_tilt = 0.0
         self.battery_v = 0.0
@@ -130,6 +132,10 @@ class TelemetryState:
             self.mx = float(data.get("mx", self.mx))
             self.my = float(data.get("my", self.my))
             self.mz = float(data.get("mz", self.mz))
+            mag_now = (self.mx, self.my, self.mz)
+            if not self._mag_changed and mag_now != self._mag_prev:
+                self._mag_changed = True
+            self._mag_prev = mag_now
             if "v" in data:
                 self.battery_v = round(float(data["v"]) / 100, 2)
             if "pan" in data:
@@ -178,6 +184,7 @@ class TelemetryState:
                 "mx": self.mx,
                 "my": self.my,
                 "mz": self.mz,
+                "mag_changed": self._mag_changed,
                 "gimbal_pan": self.gimbal_pan,
                 "gimbal_tilt": self.gimbal_tilt,
                 "battery_v": self.battery_v,
@@ -499,7 +506,8 @@ def compute_sense(snap: dict, *,
                 stuck = True
 
     mx, my = snap["mx"], snap["my"]
-    if mx == 0.0 and my == 0.0:
+    mag_changed = snap.get("mag_changed", True)
+    if (mx == 0.0 and my == 0.0) or not mag_changed:
         heading_deg = None
     else:
         heading_deg = round((math.degrees(math.atan2(my, mx)) + 360) % 360, 1)
