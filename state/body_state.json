@@ -1,7 +1,7 @@
 {
-  "last_tick": 499,
-  "wake_count": 358,
-  "last_invocation": "2026-04-06T09:00:31-04:00",
+  "last_tick": 500,
+  "wake_count": 359,
+  "last_invocation": "2026-04-06T09:00:49-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775477314.0,
+  "last_drive_time": 1775480449.0,
   "drives": {
-    "wanderlust": 0.24775660754905807,
+    "wanderlust": 0.2144437168704139,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.6086006191455655,
+    "builder": 0.7336108767655161,
     "expression": 0.0,
-    "frustration": 0.36306606499259453
+    "frustration": 0.3352287236549198
   },
-  "_last_known_distance": 71.971,
+  "_last_known_distance": 72.632,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -107,7 +107,5 @@
   "_left_turn_1750ms_tick498": "1750ms = ~90deg left with PERFECT symmetry (L=-176 R=176, ratio 1.0). Best 1750ms left ever. Variance now 78-90deg across 3 measurements at this duration.",
   "_fwd_planner_degradation_tick498": "Forward 1500ms = 11.2cm (21.1% under planner 14.2cm). 3 consecutive ticks of worsening undershoot: 0.4%, 11.3%, 21.1%. Startup lag 500ms this tick (vs planner assumption ~450ms). Surface friction or planner model needs downward revision.",
   "_planner_mismatch_fixed_tick499": "DEBUNKED: 'accelerating degradation' was false alarm. Skills.md referenced stale 1500ms=14.2cm but drive_engine.py was revised at tick 475 to 1500ms=12.2cm. Against correct baseline: 11.2cm is 8.2% under (not 21.1%). 2000ms test: 17.8cm vs 18.9cm predicted (5.8% under). Planner curve validated. Skills.md corrected.",
-  "_left_turn_1750ms_tick499": "1750ms = ~84deg left, ASYMMETRIC (L=-174 R=153, ratio 1.137). R wheel lagged — cable influence on CCW rotation. 4th measurement at 1750ms: 78, 82, 90, 84deg. Avg ~83.5deg.",
-  "_last_known_distance": 72.335,
-  "_recent_moods": ["prowling", "prowling", "prowling", "restless", "restless"]
+  "_left_turn_1750ms_tick499": "1750ms = ~84deg left, ASYMMETRIC (L=-174 R=153, ratio 1.137). R wheel lagged \u2014 cable influence on CCW rotation. 4th measurement at 1750ms: 78, 82, 90, 84deg. Avg ~83.5deg."
 }
