@@ -1,7 +1,7 @@
 {
-  "last_tick": 486,
-  "wake_count": 345,
-  "last_invocation": "2026-04-05T20:00:49-04:00",
+  "last_tick": 487,
+  "wake_count": 346,
+  "last_invocation": "2026-04-05T20:00:53-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775433649.0,
+  "last_drive_time": 1775433905.0899715,
   "drives": {
-    "wanderlust": 3.14580069647895e-10,
+    "wanderlust": 2.9802322387695313e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.36000548323823345,
+    "builder": 0.48499483421444894,
     "expression": 0.0,
-    "frustration": 0.4252609154303803
+    "frustration": 0.4345508975581011
   },
-  "_last_known_distance": 69.681,
+  "_last_known_distance": 69.944,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -50,9 +50,9 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "prowling",
     "exploring",
     "resolute",
+    "prowling",
     "prowling",
     "prowling"
   ],
@@ -88,5 +88,7 @@
   "_west_corridor_tick": 486,
   "_west_corridor_note": "West corridor RESTRICTED: only ~17cm clean before cable catches R wheel (ratio 3.25, locked at t=1.2). West is parallel to cable route, not perpendicular. Cardinal survey COMPLETE: E=BLOCKED, N=IMPAIRED, S=CLEAN(97cm), W=RESTRICTED(17cm). Cage is a line (south), not a cross. Now facing south after right turn 95deg.",
   "_cardinal_survey_complete": true,
-  "_cardinal_survey_note": "From current position: E=BLOCKED(ratio 12.1), N=IMPAIRED(ratio 0.73), S=CLEAN(97cm then hard catch), W=RESTRICTED(17cm then hard catch). Only viable corridor is south. Cable runs roughly E-W along floor."
+  "_cardinal_survey_note": "From current position: E=BLOCKED(ratio 12.1), N=IMPAIRED(ratio 0.73), S=CLEAN(97cm then hard catch), W=RESTRICTED(17cm then hard catch). Only viable corridor is south. Cable runs roughly E-W along floor.",
+  "_south_clean_position_dependent": true,
+  "_south_clean_note_tick487": "South corridor showed cable drag at just 18.85cm (ratio 1.142) from current position, vs 97cm clean from ticks 484-485. Cable slack is position-dependent \u2014 survey corridor lengths only valid for measurement position."
 }
