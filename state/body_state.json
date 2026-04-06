@@ -1,7 +1,7 @@
 {
-  "last_tick": 495,
-  "wake_count": 354,
-  "last_invocation": "2026-04-06T04:00:35-04:00",
+  "last_tick": 496,
+  "wake_count": 355,
+  "last_invocation": "2026-04-06T05:00:23-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775462823.7732408,
+  "last_drive_time": 1775466001.9835694,
   "drives": {
-    "wanderlust": 0.22653949444492658,
+    "wanderlust": 2.814663781060113e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.10860390361812379,
+    "builder": 0.2336106154902114,
     "expression": 0.0,
-    "frustration": 0.44078131391507486
+    "frustration": 0.4263998627691972
   },
-  "_last_known_distance": 71.335,
+  "_last_known_distance": 71.632,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -100,5 +100,7 @@
   "_r_wheel_cable_catch_tick491": "Forward drive from current position caught R wheel (odom R=0). Reversed to free. Cable restrictions are position-dependent and non-deterministic.",
   "_left_turn_1550ms_tick494": "1550ms \u2248 67deg left. 4 data points now: 1550ms=67deg, 1750ms=82deg, 1800ms=88.5deg, 1900ms=103deg. Interpolation: 1600ms\u224875deg.",
   "_left_turn_1600ms_tick495": "1600ms = ~63deg left (LESS than 1550ms=67deg). Interpolation model broken in 1550-1650ms range. Startup lag variance dominates. Left turn planner remains decorative.",
-  "_north_pacing_clean_tick495": "5th consecutive clean tick: 15 drives / 0 cable catches. Forward 14.25cm nailed planner (0.4% over). Left turn variance confirmed: 1600ms gave 63deg while 1550ms gave 67deg. Forward planner redeemed after 3 ticks of undershoot."
+  "_north_pacing_clean_tick495": "5th consecutive clean tick: 15 drives / 0 cable catches. Forward 14.25cm nailed planner (0.4% over). Left turn variance confirmed: 1600ms gave 63deg while 1550ms gave 67deg. Forward planner redeemed after 3 ticks of undershoot.",
+  "_left_turn_1750ms_tick496": "1750ms = ~78deg left (under expected 82deg). Variance present even at longer durations. 6th data point: 1550=67, 1600=63, 1650=82, 1750=78-82, 1800=88.5. Forward 12.6cm vs 14.2cm planner (11.3% under — worst recent).",
+  "_north_pacing_clean_tick496": "6th consecutive clean tick: 18 drives / 0 cable catches. Abandoned sub-1700ms left turn calibration — variance exceeds resolution. Forward planner undershoot worsening (11.3% this tick)."
 }
