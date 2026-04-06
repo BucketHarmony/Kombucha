@@ -1,9 +1,9 @@
 {
-  "last_tick": 489,
-  "wake_count": 348,
-  "last_invocation": "2026-04-05T23:00:31-04:00",
+  "last_tick": 490,
+  "wake_count": 349,
+  "last_invocation": "2026-04-05T23:00:35-04:00",
   "last_mode": "heartbeat",
-  "last_mood": "restless",
+  "last_mood": "prowling",
   "_compass_complete_tick": 475,
   "_compass_note": "Full heading compass: East=BLOCKED (ratio 12.1), North=IMPAIRED (ratio 0.73, L wheel drags), South=CLEAN (ratio 0.94), West=CLEAN (ratio 1.0). Cable routes to NE \u2014 blocks R wheel heading E, L wheel heading N. Gradient not binary.",
   "_planner_revised_tick": 475,
@@ -20,12 +20,12 @@
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
   "last_drive_time": 1775444431.0,
   "drives": {
-    "wanderlust": 3.311369154188368e-10,
+    "wanderlust": 0.0,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.11069079423116313,
+    "builder": 0.2356970774465137,
     "expression": 0.0,
-    "frustration": 0.4563374684750157
+    "frustration": 0.462170217695881
   },
   "_last_known_distance": 70.163,
   "_cable_slack_mapped_tick": 472,
@@ -90,5 +90,9 @@
   "_cardinal_survey_complete": true,
   "_cardinal_survey_note": "From current position: E=BLOCKED(ratio 12.1), N=IMPAIRED(ratio 0.73), S=CLEAN(97cm then hard catch), W=RESTRICTED(17cm then hard catch). Only viable corridor is south. Cable runs roughly E-W along floor.",
   "_south_clean_position_dependent": true,
-  "_south_clean_note_tick487": "South corridor showed cable drag at just 18.85cm (ratio 1.142) from current position, vs 97cm clean from ticks 484-485. Cable slack is position-dependent \u2014 survey corridor lengths only valid for measurement position."
+  "_south_clean_note_tick487": "South corridor showed cable drag at just 18.85cm (ratio 1.142) from current position, vs 97cm clean from ticks 484-485. Cable slack is position-dependent \u2014 survey corridor lengths only valid for measurement position.",
+  "_imu_heading_frozen_tick": 490,
+  "_imu_heading_frozen_note": "IMU heading stuck at 270deg. Did not change during confirmed 180deg turn (odom L=314 R=-318). Heading data unreliable. Use odometry for orientation.",
+  "_audio_clip_endpoint_tick": 490,
+  "_audio_clip_endpoint_note": "Added POST /audio/clip to bridge.py. Saves audio buffer as WAV via HTTP, bypassing ALSA device contention from SSH arecord. Audio system confirmed working — room genuinely quiet at 0.0001 RMS."
 }

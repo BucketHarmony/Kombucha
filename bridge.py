@@ -843,6 +843,24 @@ def get_audio_level():
     return audio_listener.snapshot()
 
 
+@app.post("/audio/clip")
+def save_audio_clip(body: dict = {}):
+    """Save recent audio buffer as a WAV clip. Returns path and analysis."""
+    if audio_listener is None:
+        raise HTTPException(
+            status_code=503, detail={"error": "Audio listener not initialized"}
+        )
+    filename = body.get("filename", f"clip_{int(time.time())}.wav")
+    duration_s = body.get("duration_s", 5.0)
+    duration_s = min(max(duration_s, 0.5), 10.0)
+    path = audio_listener.save_clip(filename, duration_s=duration_s)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No audio buffered")
+    from mic import analyze_clip
+    stats = analyze_clip(path)
+    return {"result": "ok", "path": path, "stats": stats}
+
+
 @app.post("/plugged")
 def set_plugged(body: PluggedModel):
     """Manual override for plugged-in state."""

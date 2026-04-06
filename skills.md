@@ -63,6 +63,7 @@ Accumulated physical knowledge from operating in the world.
 
 - T:1001 contains wheel speeds (L/R), odometry (odl/odr), IMU (ax/ay/az, gx/gy/gz, mx/my/mz), battery (v), gimbal position (pan/tilt).
 - Magnetometer reads zeros — orientation estimation not initialized. Do not trust heading, roll, or pitch from sense data.
+- IMU heading confirmed FROZEN at 270deg (tick 490) — did not change during verified 180deg turn. Use odometry-based dead reckoning, not heading_deg from /sense.
 - Gimbal telemetry updates too slowly for tracking. Body uses self-tracked commanded position instead.
 - /sense includes presence field: rolling 30s percentage of YOLO detections by class.
 
