@@ -1,7 +1,7 @@
 {
-  "last_tick": 494,
-  "wake_count": 353,
-  "last_invocation": "2026-04-06T03:00:39-04:00",
+  "last_tick": 495,
+  "wake_count": 354,
+  "last_invocation": "2026-04-06T04:00:35-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775459139.6221416,
+  "last_drive_time": 1775462823.7732408,
   "drives": {
-    "wanderlust": 2.6490953233506944e-10,
+    "wanderlust": 0.22653949444492658,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.3361729679753383,
+    "builder": 0.10860390361812379,
     "expression": 0.0,
-    "frustration": 0.4517961247153403
+    "frustration": 0.44078131391507486
   },
-  "_last_known_distance": 71.257,
+  "_last_known_distance": 71.335,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -99,5 +99,6 @@
   "_mag_staleness_fix_note": "Magnetometer returns constant (0, -1, -1) since boot. atan2(-1,0)=270 was fake heading. hardware.py now tracks _mag_changed; compute_sense returns heading_deg=None when mag never varies. Deployed to Pi.",
   "_r_wheel_cable_catch_tick491": "Forward drive from current position caught R wheel (odom R=0). Reversed to free. Cable restrictions are position-dependent and non-deterministic.",
   "_left_turn_1550ms_tick494": "1550ms \u2248 67deg left. 4 data points now: 1550ms=67deg, 1750ms=82deg, 1800ms=88.5deg, 1900ms=103deg. Interpolation: 1600ms\u224875deg.",
-  "_north_pacing_clean_tick494": "3rd consecutive clean tick: reverse 800ms + left turn 67deg + forward 1500ms all clean. 9 drives / 0 cable catches across 3 ticks. Forward 13.15cm (7.4% under planner). Left turn 1550ms=67deg (new data point, undershot 75deg target)."
+  "_left_turn_1600ms_tick495": "1600ms = ~63deg left (LESS than 1550ms=67deg). Interpolation model broken in 1550-1650ms range. Startup lag variance dominates. Left turn planner remains decorative.",
+  "_north_pacing_clean_tick495": "5th consecutive clean tick: 15 drives / 0 cable catches. Forward 14.25cm nailed planner (0.4% over). Left turn variance confirmed: 1600ms gave 63deg while 1550ms gave 67deg. Forward planner redeemed after 3 ticks of undershoot."
 }
