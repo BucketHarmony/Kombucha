@@ -325,12 +325,19 @@ TETHER_CLEAN = 1.15      # ratio below this = clean drive
 TETHER_RESTRICTED = 1.5   # ratio above this = cable restricting
 TETHER_LOCKED = 2.5       # ratio above this = cable locking
 
-def tether_estimate(recent_ratios: list[float]) -> dict:
+def tether_estimate(recent_ratios: list[float],
+                    position_m: float | None = None,
+                    measurement_positions: list[float] | None = None) -> dict:
     """Estimate tether state from recent drive L/R ratios.
 
     Args:
         recent_ratios: List of odom_L/odom_R ratios from recent forward/reverse drives.
                        Should be 3-10 drives. Turns excluded (use only straight drives).
+        position_m: Current session distance (from /sense distance_session_m).
+                    Used to detect stale estimates when rover has moved significantly.
+        measurement_positions: Session distances at which each ratio was measured.
+                              Same length as recent_ratios. If provided, estimates from
+                              positions >2m away from current position are flagged as stale.
 
     Returns dict with:
         state: "clean" | "restricted" | "locked" | "unknown"
@@ -339,6 +346,8 @@ def tether_estimate(recent_ratios: list[float]) -> dict:
         worst_ratio: max ratio
         clean_pct: percentage of drives that were clean
         recommendation: string advice for next drive
+        stale_pct: percentage of measurements from distant positions (if position data given)
+        position_warning: string if many measurements are stale
     """
     if not recent_ratios:
         return {
@@ -399,14 +408,35 @@ def tether_estimate(recent_ratios: list[float]) -> dict:
     else:
         recommendation = "Clean slack. Full drives safe."
 
-    return {
+    # Position staleness check
+    stale_pct = 0.0
+    position_warning = None
+    if position_m is not None and measurement_positions and len(measurement_positions) == len(recent_ratios):
+        stale_count = sum(
+            1 for p in measurement_positions
+            if abs(p - position_m) > 2.0
+        )
+        stale_pct = stale_count / len(measurement_positions) * 100
+        if stale_pct > 50:
+            position_warning = (
+                f"{stale_pct:.0f}% of measurements are from >2m away. "
+                "Cable slack is position-dependent — these estimates may not reflect current geometry."
+            )
+            if state == "clean":
+                recommendation += " WARNING: estimate based on stale position data."
+
+    result = {
         "state": state,
         "trend": trend,
         "avg_ratio": round(avg, 3),
         "worst_ratio": round(worst, 3),
         "clean_pct": round(clean_pct, 1),
         "recommendation": recommendation,
+        "stale_pct": round(stale_pct, 1),
     }
+    if position_warning:
+        result["position_warning"] = position_warning
+    return result
 
 
 def load_state() -> dict:

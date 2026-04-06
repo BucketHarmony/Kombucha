@@ -501,10 +501,13 @@ def get_frame(annotate: int = 0):
             colors = {"person": (0, 180, 255), "cat": (255, 100, 255),
                       "dog": (255, 180, 0), "chair": (100, 100, 255)}
             for det in cv_pipeline.get_detections():
-                x, y, w, h = det["x"], det["y"], det["w"], det["h"]
-                color = colors.get(det["class_name"], (100, 200, 100))
+                x = det.get("x", 0)
+                y = det.get("y", 0)
+                w = det.get("w", 0)
+                h = det.get("h", 0)
+                color = colors.get(det.get("class_name", ""), (100, 200, 100))
                 cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-                label = f"{det['class_name']} {det['confidence']:.0%}"
+                label = f"{det.get('class_name', '?')} {det.get('confidence', 0):.0%}"
                 cv2.putText(frame, label, (x, y - 6),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
         if snap.get("motion_detected"):
@@ -519,7 +522,7 @@ def get_frame(annotate: int = 0):
         if gimbal_arbiter:
             arb = gimbal_arbiter.snapshot()
             n_dets = len(cv_pipeline.get_detections()) if cv_pipeline else 0
-            info = f"{arb['mode']} | persons:{snap['face_count']} | objects:{n_dets} | q:{arb['queue_depth']}"
+            info = f"{arb.get('mode', '?')} | persons:{snap.get('face_count', 0)} | objects:{n_dets} | q:{arb.get('queue_depth', 0)}"
             cv2.putText(frame, info, (10, frame.shape[0] - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
 
