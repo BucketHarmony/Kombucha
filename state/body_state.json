@@ -1,7 +1,7 @@
 {
-  "last_tick": 490,
-  "wake_count": 349,
-  "last_invocation": "2026-04-05T23:00:35-04:00",
+  "last_tick": 491,
+  "wake_count": 350,
+  "last_invocation": "2026-04-06T00:00:37-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775444431.0,
+  "last_drive_time": 1775448001.418265,
   "drives": {
-    "wanderlust": 0.0,
+    "wanderlust": 2.483526865641276e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.2356970774465137,
+    "builder": 0.0993201348102755,
     "expression": 0.0,
-    "frustration": 0.462170217695881
+    "frustration": 0.46463178659057963
   },
-  "_last_known_distance": 70.163,
+  "_last_known_distance": 70.521,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -52,9 +52,9 @@
   "_recent_moods": [
     "prowling",
     "prowling",
-    "prowling",
     "restless",
-    "restless"
+    "restless",
+    "prowling"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
@@ -94,5 +94,8 @@
   "_imu_heading_frozen_tick": 490,
   "_imu_heading_frozen_note": "IMU heading stuck at 270deg. Did not change during confirmed 180deg turn (odom L=314 R=-318). Heading data unreliable. Use odometry for orientation.",
   "_audio_clip_endpoint_tick": 490,
-  "_audio_clip_endpoint_note": "Added POST /audio/clip to bridge.py. Saves audio buffer as WAV via HTTP, bypassing ALSA device contention from SSH arecord. Audio system confirmed working — room genuinely quiet at 0.0001 RMS."
+  "_audio_clip_endpoint_note": "Added POST /audio/clip to bridge.py. Saves audio buffer as WAV via HTTP, bypassing ALSA device contention from SSH arecord. Audio system confirmed working \u2014 room genuinely quiet at 0.0001 RMS.",
+  "_mag_staleness_fix_tick": 491,
+  "_mag_staleness_fix_note": "Magnetometer returns constant (0, -1, -1) since boot. atan2(-1,0)=270 was fake heading. hardware.py now tracks _mag_changed; compute_sense returns heading_deg=None when mag never varies. Deployed to Pi.",
+  "_r_wheel_cable_catch_tick491": "Forward drive from current position caught R wheel (odom R=0). Reversed to free. Cable restrictions are position-dependent and non-deterministic."
 }
