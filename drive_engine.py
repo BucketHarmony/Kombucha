@@ -88,11 +88,8 @@ def analyze_drive(drive_response: dict, cmd_left: float = 0, cmd_right: float = 
     # Determine if this is a turn (opposite wheel directions)
     is_turn = (cmd_left > 0 and cmd_right < 0) or (cmd_left < 0 and cmd_right > 0)
 
-    # Asymmetry ratio
-    if is_turn:
-        ratio = odom_l / odom_r if odom_r > 0 else float('inf')
-    else:
-        ratio = odom_l / odom_r if odom_r > 0 else float('inf')
+    # Asymmetry ratio (same formula for turns and straight drives)
+    ratio = odom_l / odom_r if odom_r > 0 else float('inf')
 
     # Startup lag: first sample where either wheel exceeds 0.05 m/s
     startup_lag_ms = None
@@ -138,12 +135,17 @@ def analyze_drive(drive_response: dict, cmd_left: float = 0, cmd_right: float = 
             if abs(error_pct) > 10:
                 flags.append(f"PLANNER_ERROR ({error_pct:+.1f}%)")
 
-    # Estimate degrees for turns
+    # Estimate degrees for turns using the calibrated planner when possible,
+    # falling back to the empirical ~2 odom ticks per degree.
     turn_deg = None
     if is_turn and odom_l > 0 and odom_r > 0:
-        avg_odom = (odom_l + odom_r) / 2
-        # Empirical: ~2 odom ticks per degree (from calibration data)
-        turn_deg = avg_odom / 2.0
+        if cmd_duration_ms > 0:
+            # Use the planner curve — more accurate than raw odom conversion
+            direction = "left" if cmd_left < 0 and cmd_right > 0 else "right"
+            turn_deg = degrees_for_duration(cmd_duration_ms, direction)
+        else:
+            avg_odom = (odom_l + odom_r) / 2
+            turn_deg = avg_odom / 2.0
 
     return {
         "distance_cm": round(dist_m * 100, 1),
@@ -252,11 +254,14 @@ RIGHT_TURN_POINTS = [
 ]
 
 LEFT_TURN_POINTS = [
-    (1550, 67.0),     # tick 494 (odom avg 130 ticks, clean)
+    # WARNING: Left turns have HIGH variance (±10deg at same duration).
+    # Startup lag variance (300-500ms) dominates short durations.
+    # Sub-1700ms data is non-monotonic (1600ms=63deg < 1550ms=67deg)
+    # so those points are excluded. Use these as rough guides, not precision.
     (1650, 82.0),     # tick 493 (odom avg 159.5 ticks, clean)
-    (1750, 82.0),     # tick 447 (variable 82-90, low end)
+    (1750, 83.5),     # ticks 496-499 avg of 4 measurements: 78, 82, 90, 84deg
     (1800, 88.5),     # tick 468 (avg of 90 + 87)
-    (1900, 103.0),    # tick — extrapolated from 1900ms=199 odom
+    (1900, 103.0),    # extrapolated from 1900ms=199 odom
 ]
 
 
