@@ -1,7 +1,7 @@
 {
-  "last_tick": 488,
-  "wake_count": 347,
-  "last_invocation": "2026-04-05T21:00:43-04:00",
+  "last_tick": 489,
+  "wake_count": 348,
+  "last_invocation": "2026-04-05T23:00:31-04:00",
   "last_mode": "heartbeat",
   "last_mood": "restless",
   "_compass_complete_tick": 475,
@@ -18,16 +18,16 @@
   "_turn_planner_note": "Turn planner committed: duration_for_turn(deg, dir) + degrees_for_duration(ms, dir). Right: 4-point curve. Left: 3-point curve. First test: forward planner undershoots 4-6% consistently. Left turns have 22deg spread on identical 1810ms commands (83deg vs 105deg) \u2014 startup lag variance dominates. Left curve needs more data points.",
   "_fwd_correction_tick": 471,
   "_fwd_correction_note": "Reduced correction from 5% to 3%. Test drive caught by cable (2597ms, R wheel stalled at 1.4s) \u2014 cannot validate 3% directly. But 2000ms drive in new direction: 19.05cm vs 18.9cm predicted (0.8% overshoot, within tolerance). Cable catching at shorter durations now (2597ms vs 3116ms tick 470).",
-  "last_drive_time": 1775437201.4386368,
+  "last_drive_time": 1775444431.0,
   "drives": {
-    "wanderlust": 2.9802322387695313e-10,
+    "wanderlust": 3.311369154188368e-10,
     "curiosity": 0.0,
     "social": 0.0,
-    "builder": 0.6099806532098188,
+    "builder": 0.11069079423116313,
     "expression": 0.0,
-    "frustration": 0.44713153406648226
+    "frustration": 0.4563374684750157
   },
-  "_last_known_distance": 70.165,
+  "_last_known_distance": 70.163,
   "_cable_slack_mapped_tick": 472,
   "_cable_slack_note": "After right turn: 2200ms clean (20.4cm), 2400ms cable brush (R stall t=1.8, ratio 1.14), 2597ms full catch (tick 471). Safe forward ceiling: ~2200ms (~20cm). Left turn 1810ms=83deg (4th data point).",
   "_cable_directional_tick": 475,
@@ -50,11 +50,11 @@
   ],
   "_frustration_onset": 1775221201.4527473,
   "_recent_moods": [
-    "exploring",
-    "resolute",
     "prowling",
     "prowling",
-    "prowling"
+    "prowling",
+    "restless",
+    "restless"
   ],
   "_audio_clip_enabled_tick": 436,
   "_audio_analyze_enabled_tick": 437,
