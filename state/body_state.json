@@ -1,7 +1,7 @@
 {
   "last_tick": 502,
-  "wake_count": 1101,
-  "last_invocation": "2026-05-07T10:00:01-04:00",
+  "wake_count": 1102,
+  "last_invocation": "2026-05-07T11:00:01-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -25,7 +25,7 @@
     "social": 0.0,
     "builder": 1.0,
     "expression": 0.0,
-    "frustration": 0.003985239075755757
+    "frustration": 0.010976595783033678
   },
   "_last_known_distance": 72.805,
   "_cable_slack_mapped_tick": 472,
