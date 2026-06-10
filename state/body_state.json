@@ -1,7 +1,7 @@
 {
   "last_tick": 502,
-  "wake_count": 1922,
-  "last_invocation": "2026-06-10T19:46:08-04:00",
+  "wake_count": 1923,
+  "last_invocation": "2026-06-10T19:49:26-04:00",
   "last_mode": "instinct",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -21,8 +21,8 @@
   "last_drive_time": 1775487933.2692995,
   "drives": {
     "wanderlust": 1.0,
-    "curiosity": 0.15000000000000002,
-    "social": 0.6,
+    "curiosity": 0.05,
+    "social": 1.0,
     "builder": 1.0,
     "expression": 0.0,
     "frustration": 0.0
