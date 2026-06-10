@@ -1,8 +1,8 @@
 {
   "last_tick": 502,
-  "wake_count": 1917,
-  "last_invocation": "2026-06-10T17:00:01-04:00",
-  "last_mode": "heartbeat",
+  "wake_count": 1918,
+  "last_invocation": "2026-06-10T18:39:32-04:00",
+  "last_mode": "instinct",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
   "_compass_note": "Full heading compass: East=BLOCKED (ratio 12.1), North=IMPAIRED (ratio 0.73, L wheel drags), South=CLEAN (ratio 0.94), West=CLEAN (ratio 1.0). Cable routes to NE \u2014 blocks R wheel heading E, L wheel heading N. Gradient not binary.",
@@ -21,11 +21,11 @@
   "last_drive_time": 1775487933.2692995,
   "drives": {
     "wanderlust": 1.0,
-    "curiosity": 0.0,
+    "curiosity": 0.05,
     "social": 0.0,
     "builder": 1.0,
     "expression": 0.0,
-    "frustration": 0.02109573260146412
+    "frustration": 0.0
   },
   "_last_known_distance": 72.805,
   "_cable_slack_mapped_tick": 472,
@@ -110,7 +110,7 @@
     "prowling"
   ],
   "_frustration_sources": [
-    "camera_dead"
+    "phantom_face"
   ],
   "_frustration_onset": 1776398401.3183534
 }
