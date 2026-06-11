@@ -1,7 +1,7 @@
 {
   "last_tick": 502,
-  "wake_count": 1934,
-  "last_invocation": "2026-06-10T20:37:44-04:00",
+  "wake_count": 1935,
+  "last_invocation": "2026-06-10T20:45:58-04:00",
   "last_mode": "instinct",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -22,7 +22,7 @@
   "drives": {
     "wanderlust": 1.0,
     "curiosity": 0.05,
-    "social": 0.0,
+    "social": 0.6,
     "builder": 1.0,
     "expression": 0.0,
     "frustration": 0.0
@@ -108,9 +108,5 @@
     "prowling",
     "restless",
     "prowling"
-  ],
-  "_frustration_sources": [
-    "phantom_face"
-  ],
-  "_frustration_onset": 1781137573.4173732
+  ]
 }
