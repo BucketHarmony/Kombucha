@@ -1,7 +1,7 @@
 {
   "last_tick": 502,
-  "wake_count": 1940,
-  "last_invocation": "2026-06-11T00:00:01-04:00",
+  "wake_count": 1941,
+  "last_invocation": "2026-06-11T01:00:01-04:00",
   "last_mode": "heartbeat",
   "last_mood": "prowling",
   "_compass_complete_tick": 475,
@@ -108,5 +108,9 @@
     "prowling",
     "restless",
     "prowling"
-  ]
+  ],
+  "_frustration_sources": [
+    "phantom_face"
+  ],
+  "_frustration_onset": 1781154001.9438555
 }
